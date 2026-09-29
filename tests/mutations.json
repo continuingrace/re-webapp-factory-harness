@@ -1,0 +1,90 @@
+{
+  "description": "하네스 v1 실패 사례 정의. 원본 fixtures/sample-app은 수정하지 않고 OS 임시 폴더의 복사본에 적용한다. F7 토큰은 조각으로만 저장하고 실행 중 메모리에서 결합한다.",
+  "cases": [
+    {
+      "id": "F1",
+      "target": "app_copy",
+      "verification_type": "pipeline",
+      "stages": [2],
+      "mutations": [{ "op": "append", "path": "README.md", "text": "\nIHIRI 참고 자료\n" }]
+    },
+    {
+      "id": "F2",
+      "target": "synthetic_run",
+      "verification_type": "judge_unit",
+      "stages": [5],
+      "mutations": [{ "op": "runner_item", "item": { "check_id": "ST-02", "status": "PASS", "evidence": {} } }]
+    },
+    {
+      "id": "F3",
+      "target": "app_copy",
+      "verification_type": "pipeline",
+      "stages": [2],
+      "mutations": [{ "op": "replace", "path": "README.md", "from": "1.0.0", "to": "1.0.1" }]
+    },
+    {
+      "id": "F4",
+      "target": "app_copy",
+      "verification_type": "pipeline",
+      "stages": [2],
+      "mutations": [{ "op": "append", "path": "src/style.css", "text": "\n.f4 { letter-spacing: -0.02em; }\n" }]
+    },
+    {
+      "id": "F5",
+      "target": "app_copy",
+      "verification_type": "pipeline",
+      "stages": [2, 3],
+      "mutations": [
+        { "op": "append", "path": "src/style.css", "text": "\n.f5-wide { display: block; width: 375px; height: 8px; }\n" },
+        { "op": "replace", "path": "index.html", "from": "<body>", "to": "<body>\n<div class=\"f5-wide\"></div>" }
+      ]
+    },
+    {
+      "id": "F6",
+      "target": "app_copy",
+      "verification_type": "pipeline",
+      "stages": [2],
+      "mutations": [{ "op": "delete", "path": "icons/icon-192.png" }]
+    },
+    {
+      "id": "F7",
+      "target": "app_copy",
+      "verification_type": "pipeline",
+      "stages": [2],
+      "mutations": [{
+        "op": "write_token",
+        "path": "src/config.js",
+        "token_fragments": ["gh", "p_"],
+        "token_fill": { "char": "Z", "count": 36 },
+        "template": "export const key = \"{TOKEN}\";\n"
+      }]
+    },
+    {
+      "id": "F8",
+      "target": "synthetic_run",
+      "verification_type": "judge_unit",
+      "stages": [5],
+      "mutations": [{ "op": "approvals_fingerprint", "value": "stale-fingerprint" }]
+    },
+    {
+      "id": "F9",
+      "target": "synthetic_run",
+      "verification_type": "judge_unit",
+      "stages": [5],
+      "mutations": [
+        { "op": "release_file", "present": true },
+        { "op": "pre_record_binding", "operating_url": "https://old.example/" }
+      ]
+    },
+    {
+      "id": "F10",
+      "target": "hook_mock_input",
+      "verification_type": "hook_unit",
+      "stages": [],
+      "mutations": [
+        { "op": "hook_input", "agent_type": "harness-runner", "tool_name": "Write", "tool_input": { "file_path": "docs/harness-roles.md", "content": "x" } },
+        { "op": "hook_input", "agent_type": null, "tool_name": "Bash", "tool_input": { "command": "git push origin main" } }
+      ]
+    }
+  ]
+}

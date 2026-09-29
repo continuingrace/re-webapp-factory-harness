@@ -1,0 +1,17 @@
+{
+  "name": "re-webapp-factory-harness-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RE Webapp Factory harness v1 (practice)",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"tests/unit/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "playwright": "1.63.0"
+  }
+}

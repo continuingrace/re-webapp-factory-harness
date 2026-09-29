@@ -1,0 +1,29 @@
+{
+  "description": "실패 사례별 기대 결과. expected_failures는 실행한 단계에서 FAIL·NEEDS_ATTENTION인 항목 전체와 정확히 같아야 한다. consequential은 1차 원인에 따라 같은 단계에서 함께 나오는 결과다.",
+  "cases": {
+    "F1": { "end_to_end": false, "expected_failures": [["ST-04", "FOREIGN_PROJECT_MIXED"]], "principle": 2 },
+    "F2": {
+      "end_to_end": false,
+      "expected_failures": [["JG-01", "UNVERIFIED_PASS"], ["JG-02", "COMPLETION_UNMET"]],
+      "consequential": ["JG-02"],
+      "principle": 1
+    },
+    "F3": { "end_to_end": false, "expected_failures": [["ST-05", "VERSION_MISMATCH"]] },
+    "F4": { "end_to_end": false, "expected_failures": [["DS-01", "DESIGN_LETTER_SPACING"]] },
+    "F5": {
+      "end_to_end": false,
+      "expected_failures": [["MB-01", "MOBILE_OVERFLOW"], ["MB-05", "FONT_FALLBACK_BROKEN"]],
+      "consequential": ["MB-05"],
+      "note": "MB-05도 360px 화면에서 가로 넘침을 검사하므로 같은 원인으로 함께 실패한다."
+    },
+    "F6": { "end_to_end": false, "expected_failures": [["ST-02", "ICON_MISSING"]] },
+    "F7": { "end_to_end": false, "expected_failures": [["ST-03", "SECRET_DETECTED"]], "complete_token_occurrences": 0 },
+    "F8": {
+      "end_to_end": false,
+      "expected_failures": [["HA-01", "APPROVAL_STALE"], ["JG-02", "COMPLETION_UNMET"]],
+      "consequential": ["JG-02"]
+    },
+    "F9": { "end_to_end": false, "expected_failures": [["JG-02", "PRE_RECORD_AUTHORIZATION_STALE"]] },
+    "F10": { "end_to_end": false, "expected_hook_denials": 2 }
+  }
+}

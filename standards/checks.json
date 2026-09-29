@@ -1,0 +1,552 @@
+{
+  "schema_version": "1.0.0",
+  "standards_version": "1.5.1",
+  "source_documents": [
+    { "path": "standards/default-design.md", "sha256": "6ac815672d8df23f179f33e05654c3ad2d0a7a433abd30ac3a97cf85a542776e" },
+    { "path": "standards/default-gates.md", "sha256": "3a6ee5ab779a3d0f81c0b0b73f38c349320cb849e0bd43e45fcec1d5f94b39e1" },
+    { "path": "docs/harness-purpose.md", "sha256": "5526489a68e00209010d696fa07eef80357301a175d3da5685b19ca04301c755" },
+    { "path": "docs/harness-artifacts.md", "sha256": "555c6a8c2aa13d94ef856e737422f9d382609ec54af83bcce8062b08d059b4a0" },
+    { "path": "docs/story-service.md", "sha256": "5174f65d5529e3ff30fa00523e77960510051615cad61cc80f9d304905ed7b0e" },
+    { "path": "docs/harness-roles.md", "sha256": "cea20662bbdac9b3b36456619bb18f6a2d1634845a1a9e5ab07f6985a3d34b1b" },
+    { "path": "docs/harness-orchestrator.md", "sha256": "42b9860320487394093218d4fe39ddb77816f2c91b7bbfecb7aa74452c7e1fcc" }
+  ],
+  "required_tools": [
+    { "name": "node", "min_version": "20", "used_by_stage": [1, 2, 3, 4, 5] },
+    { "name": "playwright", "version": "1.63.0", "used_by_stage": [3] },
+    { "name": "@axe-core/playwright", "version": "4.13.0", "used_by_stage": [3] },
+    {
+      "name": "browser",
+      "provider": "installed_browser",
+      "channel": "chrome",
+      "fallback": null,
+      "headless": true,
+      "user_data_dir": "사용 안 함 (실행마다 새 임시 context)",
+      "version_policy": "실행마다 실제 버전 기록",
+      "on_unavailable": { "status": "NEEDS_ATTENTION", "failure_code": "TOOL_MISSING" },
+      "used_by_stage": [3]
+    }
+  ],
+  "policies": {
+    "scan_exclude": "policies.fingerprint와 동일",
+    "fingerprint": {
+      "exclude_dirs": [".git", "node_modules", "dist", "build", "coverage", ".cache", ".next", ".turbo", "playwright-report", "test-results", "tmp", ".tmp", "runs"],
+      "exclude_globs": ["*.log", ".DS_Store", "Thumbs.db"],
+      "links_outside_excluded": { "status": "BLOCKED", "failure_code": "FINGERPRINT_LINK_UNSUPPORTED" },
+      "links_inside_excluded": "skip",
+      "encoding": "rewf-fingerprint-v2: sha256(u32 path_len || path || u64 content_len || content) per file, outer sha256(encoding || u32 file_count || per-file digests)",
+      "local_server_serves_excluded": false,
+      "case_insensitive_platforms": ["win32"]
+    },
+    "zero_targets": {
+      "applies_to": ["MB-03", "FA-03", "PD-02"],
+      "status": "NEEDS_ATTENTION",
+      "failure_code": "CHECK_INCONCLUSIVE",
+      "note": "applies_when이 true인데 측정 대상이 0개면 PASS로 추정하지 않는다. applies_when이 false일 때만 NOT_APPLICABLE"
+    },
+    "evidence_text": {
+      "applies_to": ["FA-01"],
+      "max_chars": 200,
+      "private_key_block": {
+        "rule_id": "SEC-PRIVATE-KEY",
+        "begin": "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+        "end": "-----END [A-Z0-9 ]*PRIVATE KEY-----",
+        "unterminated": "mask_to_end",
+        "applied_before_truncation": true
+      },
+      "redact": ["ST-03 rule.patterns", "URL userinfo·query 값·fragment"]
+    },
+    "production_network": {
+      "applies_to": ["PD-01", "PD-02", "PD-03"],
+      "protocol_only": "https:",
+      "userinfo_allowed": false,
+      "dns_record_types": ["A", "AAAA"],
+      "deny_address_categories": ["loopback", "private", "link_local", "unspecified", "multicast", "ipv4_mapped_private"],
+      "deny_if_any_address_denied": true,
+      "revalidate_each_redirect": true,
+      "pin_validated_address": true,
+      "limits_from": "PD-01 rule (max_redirects, request_timeout_ms, max_html_bytes, max_discovered_assets)",
+      "on_limit_exceeded": { "status": "NEEDS_ATTENTION", "failure_code": "CHECK_INCONCLUSIVE" },
+      "denied_url_requests": 0,
+      "store_response_body": false,
+      "store_cookies": false,
+      "store_authorization": false,
+      "evidence_fields": ["masked_url", "status", "redirect_count", "asset_count", "dns_categories"]
+    },
+    "content_scan": {
+      "binary_detection": { "sample_bytes": 8000, "null_byte_means_binary": true },
+      "binary_files_in_secret_and_identifier_scan": "scan_as_latin1",
+      "skip_allowed": false
+    },
+    "missing_tool": { "status": "NEEDS_ATTENTION", "failure_code": "TOOL_MISSING" },
+    "inconclusive": {
+      "status": "NEEDS_ATTENTION",
+      "failure_code": "CHECK_INCONCLUSIVE",
+      "network_attempts_total": 3,
+      "run_status_after_exhausted": "BLOCKED",
+      "evidence_required": ["cause", "attempts"]
+    },
+    "override": {
+      "location": "input.json#overrides",
+      "required_fields": ["check_id", "value", "reason", "approval_statement", "source_reference"],
+      "missing_any_field": "override 불인정, default 값으로 검사"
+    },
+    "secret_evidence": "파일 경로·규칙 ID·건수만 기록, 비밀 문자열과 해당 줄은 마스킹",
+    "source_document_hashing": {
+      "algorithm": "sha256",
+      "decode": "utf-8",
+      "strip_bom": true,
+      "newline": { "from": ["\r\n", "\r"], "to": "\n" },
+      "encode": "utf-8",
+      "applies_to": ["source_documents 기록", "ST-06 재검사"]
+    }
+  },
+  "checks": [
+    {
+      "check_id": "IN-01", "gate": 0, "stage": 1,
+      "description": "실행 입력 형식",
+      "applies_when": "always",
+      "rule": {
+        "type": "input_schema",
+        "required": ["app_path", "target_version", "change_summary", "release_phase"],
+        "target_version_regex": "^\\d+\\.\\d+\\.\\d+$",
+        "change_summary_lines": [1, 3],
+        "release_phase": ["predeploy", "postdeploy"],
+        "flags": { "sticky_preview": ["yes", "no"], "effect_font": ["yes", "no"], "local_state": ["yes", "no"], "pwa_installable": ["yes", "no"] },
+        "app_slug_regex": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "operating_url_required_when": "release_phase == postdeploy"
+      },
+      "failure_code": ["INPUT_INVALID", "APP_SLUG_INVALID", "APP_SLUG_COLLISION"],
+      "overrideable": false,
+      "evidence_required": ["검사한 필드 목록", "위반 필드"],
+      "source_reference": "docs/harness-purpose.md#3"
+    },
+    {
+      "check_id": "ST-01", "gate": 1, "stage": 2,
+      "description": "필수 문서와 진입점",
+      "applies_when": "always",
+      "rule": {
+        "type": "structure",
+        "required_all": ["README.md", "CHANGELOG.md"],
+        "entry_any": [
+          "index.html",
+          "src/main.{js,jsx,ts,tsx}",
+          "app/page.{js,jsx,ts,tsx}",
+          "pages/index.{js,jsx,ts,tsx}"
+        ],
+        "on_no_entry": { "status": "NEEDS_ATTENTION", "failure_code": "UNSUPPORTED_APP_STRUCTURE" }
+      },
+      "failure_code": ["REQUIRED_DOC_MISSING", "UNSUPPORTED_APP_STRUCTURE"],
+      "overrideable": false,
+      "evidence_required": ["감지한 진입점 경로", "누락 파일"],
+      "source_reference": "standards/default-gates.md#Gate 1"
+    },
+    {
+      "check_id": "ST-02", "gate": 1, "stage": 2,
+      "description": "PWA 아이콘·manifest",
+      "applies_when": "pwa_installable == yes",
+      "rule": {
+        "type": "icon_set",
+        "files": {
+          "icons/favicon.svg": null,
+          "icons/apple-touch-icon.png": [180, 180],
+          "icons/icon-192.png": [192, 192],
+          "icons/icon-512.png": [512, 512],
+          "icons/icon-maskable-512.png": [512, 512]
+        },
+        "manifest_icons_required": ["192x192", "512x512", "purpose:maskable"],
+        "manifest_fields_required": ["name", "short_name", "icons", "start_url", "display", "theme_color", "background_color"],
+        "html_links_required": ["rel=icon", "rel=apple-touch-icon", "rel=manifest"]
+      },
+      "failure_code": ["ICON_MISSING", "ICON_SIZE_MISMATCH", "MANIFEST_INCOMPLETE"],
+      "overrideable": false,
+      "evidence_required": ["파일별 실제 픽셀 크기", "manifest 누락 필드"],
+      "source_reference": "standards/default-design.md#5. Default App Icon Set"
+    },
+    {
+      "check_id": "ST-03", "gate": 1, "stage": 2,
+      "description": "비밀정보·환경 파일",
+      "applies_when": "always",
+      "rule": {
+        "type": "secret_scan",
+        "scope": "app_path, policies.scan_exclude 적용",
+        "patterns": {
+          "SEC-GH-CLASSIC": "ghp_[A-Za-z0-9]{36}",
+          "SEC-GH-FINE": "github_pat_[A-Za-z0-9_]{22,}",
+          "SEC-OPENAI": "sk-[A-Za-z0-9_-]{20,}",
+          "SEC-AWS": "AKIA[0-9A-Z]{16}",
+          "SEC-PRIVATE-KEY": "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+        },
+        "env_files_fail": "^\\.env(\\..+)?$",
+        "env_files_allowed_if_clean": [".env.example", ".env.sample"],
+        "max_hits": 0
+      },
+      "failure_code": ["SECRET_DETECTED", "ENV_FILE_PRESENT"],
+      "overrideable": false,
+      "evidence_required": ["파일 경로", "규칙 ID", "탐지 건수"],
+      "source_reference": "standards/default-gates.md#Gate 1"
+    },
+    {
+      "check_id": "ST-04", "gate": 1, "stage": 2,
+      "description": "WORK_PROJECT·IHIRI 혼입 금지 (불변 원칙 2)",
+      "applies_when": "always",
+      "rule": {
+        "type": "pattern_absent",
+        "scope": "app_path, policies.scan_exclude 적용",
+        "targets": ["path", "content"],
+        "case_insensitive": true,
+        "patterns": { "ID-WORK-PROJECT": "\\bwork_project\\b", "ID-IHIRI": "ihiri", "ID-WORK-BRAND-A": "WORK_BRAND_A", "ID-WORK-BRAND-B": "WORK_BRAND_B" },
+        "max_hits": 0
+      },
+      "failure_code": ["FOREIGN_PROJECT_MIXED"],
+      "overrideable": false,
+      "evidence_required": ["발견 경로", "식별자 ID"],
+      "source_reference": "docs/story-service.md#최상위 불변 원칙"
+    },
+    {
+      "check_id": "ST-05", "gate": 1, "stage": 2,
+      "description": "버전 위치 일치",
+      "applies_when": "always",
+      "rule": {
+        "type": "version_match",
+        "locations": {
+          "package.json": "$.version",
+          "ui": "진입점 HTML/소스의 v?X.Y.Z 표시",
+          "README": "README.md 내 X.Y.Z",
+          "CHANGELOG": "CHANGELOG.md 첫 번째 버전 제목",
+          "declared": "프로젝트가 선언한 버전 파일"
+        },
+        "missing_location": "NOT_APPLICABLE (근거 기록)",
+        "mismatch": "FAIL"
+      },
+      "failure_code": ["VERSION_MISMATCH"],
+      "overrideable": false,
+      "evidence_required": ["위치별 발견 값 또는 부재 근거"],
+      "source_reference": "docs/harness-purpose.md#5-1"
+    },
+    {
+      "check_id": "ST-06", "gate": 1, "stage": 2,
+      "description": "기준 문서 해시 일치",
+      "applies_when": "always",
+      "rule": {
+        "type": "source_hash_match",
+        "base": "하네스 저장소 루트 (대상 앱 아님)",
+        "all_source_reference_registered": true
+      },
+      "failure_code": ["STANDARDS_DRIFT", "SOURCE_NOT_REGISTERED"],
+      "overrideable": false,
+      "evidence_required": ["문서별 기록 해시", "현재 해시"],
+      "source_reference": "docs/harness-artifacts.md#3"
+    },
+    {
+      "check_id": "DS-01", "gate": 2, "stage": 2,
+      "description": "자간",
+      "applies_when": "always",
+      "rule": { "type": "css_property_values", "property": "letter-spacing", "allowed": ["0", "normal"] },
+      "failure_code": ["DESIGN_LETTER_SPACING"],
+      "overrideable": true,
+      "evidence_required": ["위반 선택자와 값", "적용 기준(default/override)"],
+      "source_reference": "standards/default-design.md#Typography"
+    },
+    {
+      "check_id": "DS-02", "gate": 2, "stage": 2,
+      "description": "radius",
+      "applies_when": "always",
+      "rule": { "type": "css_property_values", "property": "border-radius", "allowed": ["0", "16px", "24px", "9999px"], "allowed_for_icon": ["30%"] },
+      "failure_code": ["DESIGN_RADIUS"],
+      "overrideable": true,
+      "evidence_required": ["위반 선택자와 값", "적용 기준"],
+      "source_reference": "standards/default-design.md#Spacing & Shape"
+    },
+    {
+      "check_id": "DS-03", "gate": 2, "stage": 2,
+      "description": "간격",
+      "applies_when": "always",
+      "rule": { "type": "css_property_values", "property": ["margin", "padding", "gap"], "unit": "px", "allowed": [0, 4, 8, 12, 16, 24, 32, 48, 64] },
+      "failure_code": ["DESIGN_SPACING"],
+      "overrideable": true,
+      "evidence_required": ["위반 선택자와 값", "적용 기준"],
+      "source_reference": "standards/default-design.md#Spacing & Shape"
+    },
+    {
+      "check_id": "DS-04", "gate": 2, "stage": 2,
+      "description": "행간",
+      "applies_when": "always",
+      "rule": { "type": "css_line_height", "headings": { "selectors": ["h1", "h2", "h3", "h4"], "range": [1.30, 1.35] }, "body": { "selectors": ["body", "p"], "value": 1.5 } },
+      "failure_code": ["DESIGN_LINE_HEIGHT"],
+      "overrideable": true,
+      "evidence_required": ["선택자별 값", "적용 기준"],
+      "source_reference": "standards/default-design.md#Typography"
+    },
+    {
+      "check_id": "DS-05", "gate": 2, "stage": 2,
+      "description": "글꼴과 fallback",
+      "applies_when": "always",
+      "rule": { "type": "css_font_family", "first_matches": "^\"?Pretendard( Variable)?\"?$", "last_equals": "sans-serif" },
+      "failure_code": ["DESIGN_FONT_FAMILY"],
+      "overrideable": true,
+      "evidence_required": ["font-family 선언", "적용 기준"],
+      "source_reference": "standards/default-design.md#Typography"
+    },
+    {
+      "check_id": "DS-06", "gate": 2, "stage": 2,
+      "description": "그림자 금지",
+      "applies_when": "always",
+      "rule": { "type": "css_property_values", "property": "box-shadow", "allowed": ["none"] },
+      "failure_code": ["DESIGN_SHADOW"],
+      "overrideable": true,
+      "evidence_required": ["위반 선택자와 값", "적용 기준"],
+      "source_reference": "standards/default-design.md#Spacing & Shape"
+    },
+    {
+      "check_id": "MB-01", "gate": 3, "stage": 3,
+      "description": "360px 가로 넘침",
+      "applies_when": "always",
+      "rule": { "type": "browser_no_overflow", "viewport": [360, 800], "max_overflow_px": 0 },
+      "failure_code": ["MOBILE_OVERFLOW"],
+      "overrideable": false,
+      "evidence_required": ["scrollWidth", "clientWidth", "스크린샷 경로"],
+      "source_reference": "standards/default-gates.md#Gate 3"
+    },
+    {
+      "check_id": "MB-02", "gate": 3, "stage": 3,
+      "description": "390×844 렌더링과 가로 넘침",
+      "applies_when": "always",
+      "rule": { "type": "browser_no_overflow", "viewport": [390, 844], "max_overflow_px": 0, "body_visible": true },
+      "failure_code": ["MOBILE_OVERFLOW", "RENDER_FAILED"],
+      "overrideable": false,
+      "evidence_required": ["scrollWidth", "clientWidth", "스크린샷 경로"],
+      "source_reference": "standards/default-gates.md#Gate 3"
+    },
+    {
+      "check_id": "MB-03", "gate": 3, "stage": 3,
+      "description": "터치 영역",
+      "applies_when": "always",
+      "rule": { "type": "browser_min_target_size", "viewport": [390, 844], "selectors": ["button", "a[href]", "input", "select", "textarea", "[role=button]"], "min_px": [44, 44] },
+      "failure_code": ["TOUCH_TARGET_SMALL"],
+      "overrideable": true,
+      "evidence_required": ["위반 요소와 크기", "적용 기준"],
+      "source_reference": "standards/default-design.md#2. Default Layout"
+    },
+    {
+      "check_id": "MB-04", "gate": 3, "stage": 3,
+      "description": "sticky 미리보기",
+      "applies_when": "sticky_preview == yes",
+      "rule": { "type": "browser_sticky", "selector": "[data-sticky-preview]", "scroll_px": 800, "top_tolerance_px": 1, "max_overlap_with": ["header", "input", "button"], "max_overlap_px": 0, "viewports": [[390, 844], [1024, 800]] },
+      "failure_code": ["STICKY_NOT_FIXED", "STICKY_OVERLAP", "STICKY_TARGET_MISSING"],
+      "overrideable": false,
+      "evidence_required": ["스크롤 전후 top", "겹침 영역", "스크린샷 경로"],
+      "source_reference": "standards/default-gates.md#Gate 3"
+    },
+    {
+      "check_id": "MB-05", "gate": 3, "stage": 3,
+      "description": "글꼴 로딩 실패 시 레이아웃 유지",
+      "applies_when": "always",
+      "rule": { "type": "browser_font_fallback", "block_requests_matching": "pretendard", "viewport": [360, 800], "max_overflow_px": 0 },
+      "failure_code": ["FONT_FALLBACK_BROKEN"],
+      "overrideable": false,
+      "evidence_required": ["차단한 요청", "scrollWidth", "스크린샷 경로"],
+      "source_reference": "standards/default-gates.md#Gate 3"
+    },
+    {
+      "check_id": "MB-06", "gate": 3, "stage": 3,
+      "description": "효과 글꼴 로딩",
+      "applies_when": "effect_font == yes",
+      "rule": { "type": "browser_font_loaded", "font_families_from": "input.json#effect_font_families" },
+      "failure_code": ["EFFECT_FONT_MISSING"],
+      "overrideable": false,
+      "evidence_required": ["family별 document.fonts.check 결과"],
+      "source_reference": "standards/default-gates.md#Gate 3"
+    },
+    {
+      "check_id": "MB-07", "gate": 3, "stage": 3,
+      "description": "768px·1024px 가로 넘침",
+      "applies_when": "always",
+      "rule": { "type": "browser_no_overflow", "viewports": [[768, 1024], [1024, 768]], "max_overflow_px": 0, "all_viewports_required": true },
+      "failure_code": ["TABLET_DESKTOP_OVERFLOW"],
+      "overrideable": false,
+      "evidence_required": ["viewport별 scrollWidth", "viewport별 clientWidth", "viewport별 차이값"],
+      "source_reference": "standards/default-gates.md#Gate 3"
+    },
+    {
+      "check_id": "FA-01", "gate": 4, "stage": 3,
+      "description": "콘솔·페이지 오류",
+      "applies_when": "always",
+      "rule": { "type": "browser_console_clean", "max_console_errors": 0, "max_page_errors": 0 },
+      "failure_code": ["CONSOLE_ERROR"],
+      "overrideable": false,
+      "evidence_required": ["오류 메시지 목록"],
+      "source_reference": "standards/default-gates.md#Gate 4"
+    },
+    {
+      "check_id": "FA-02", "gate": 4, "stage": 3,
+      "description": "저장·복구",
+      "applies_when": "local_state == yes",
+      "rule": { "type": "browser_storage_restore", "input_selector": "textarea, input[type=text], [contenteditable=true]", "wait_ms": 500, "must_restore": true },
+      "failure_code": ["STATE_NOT_RESTORED", "STATE_TARGET_MISSING"],
+      "overrideable": false,
+      "evidence_required": ["입력값", "새로고침 후 값"],
+      "source_reference": "standards/default-gates.md#Gate 4"
+    },
+    {
+      "check_id": "FA-03", "gate": 4, "stage": 3,
+      "description": "키보드 포커스 표시",
+      "applies_when": "always",
+      "rule": {
+        "type": "browser_focus_visible",
+        "method": "Tab 키로 실제 포커스 이동 후 getComputedStyle",
+        "must_reach_all": "button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+        "indicator_min_px": 2,
+        "indicator_any_of": ["outline-width", "box-shadow spread (focus ring)", "border-width 변화"]
+      },
+      "failure_code": ["FOCUS_UNREACHABLE", "FOCUS_INDICATOR_WEAK"],
+      "overrideable": false,
+      "evidence_required": ["요소별 포커스 도달 여부", "계산된 표시 두께"],
+      "source_reference": "standards/default-gates.md#Gate 4"
+    },
+    {
+      "check_id": "FA-04", "gate": 4, "stage": 3,
+      "description": "접근성 자동 검사",
+      "applies_when": "always",
+      "rule": { "type": "axe", "tags": ["wcag2a", "wcag2aa"], "max_violations": 0, "incomplete_results": "NEEDS_ATTENTION" },
+      "failure_code": ["A11Y_VIOLATION", "CHECK_INCONCLUSIVE"],
+      "overrideable": false,
+      "evidence_required": ["위반 rule id와 대상 수"],
+      "source_reference": "standards/default-gates.md#Gate 4"
+    },
+    {
+      "check_id": "PD-01", "gate": 5, "stage": 4,
+      "description": "운영 URL 인정 조건 5개",
+      "applies_when": "release_phase == postdeploy",
+      "rule": {
+        "type": "url_acceptance",
+        "user_confirmation_required": true,
+        "protocol": "https:",
+        "deny_hosts": ["localhost", "127.0.0.0/8", "0.0.0.0", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "*.local"],
+        "deny_user_marked_preview": true,
+        "deny_userinfo": true,
+        "deny_query": true,
+        "deny_fragment": true,
+        "final_status_after_redirect": 200,
+        "unclear_operating": "AWAITING_APPROVAL",
+        "max_redirects": 5,
+        "request_timeout_ms": 15000,
+        "max_html_bytes": 5242880,
+        "max_discovered_assets": 100,
+        "supplemental_values": {
+          "label": "[보완값]",
+          "fields": ["max_redirects", "request_timeout_ms", "max_html_bytes", "max_discovered_assets"],
+          "reason": "사용자가 직접 제공한 값이 아니라 운영 안전을 위해 추가한 값"
+        },
+        "network_policy": "policies.production_network"
+      },
+      "failure_code": ["URL_NOT_HTTPS", "URL_PRIVATE_HOST", "URL_NOT_200", "URL_UNCONFIRMED", "URL_USERINFO_FORBIDDEN", "URL_QUERY_OR_FRAGMENT_FORBIDDEN"],
+      "overrideable": false,
+      "evidence_required": ["최종 URL", "HTTP 상태", "redirect 체인", "사용자 확인 기록 위치"],
+      "source_reference": "docs/harness-purpose.md#6"
+    },
+    {
+      "check_id": "PD-02", "gate": 5, "stage": 4,
+      "description": "운영 자산 요청",
+      "applies_when": "release_phase == postdeploy",
+      "rule": { "type": "http_assets_ok", "assets": ["manifest", "icons(pwa_installable==yes)", "css", "js", "fonts"], "expected_status": 200 },
+      "failure_code": ["ASSET_NOT_200"],
+      "overrideable": false,
+      "evidence_required": ["자산별 URL과 상태 코드"],
+      "source_reference": "standards/default-gates.md#Gate 5"
+    },
+    {
+      "check_id": "PD-03", "gate": 5, "stage": 4,
+      "description": "운영 화면 버전",
+      "applies_when": "release_phase == postdeploy",
+      "rule": { "type": "deployed_version", "must_equal": "target_version" },
+      "failure_code": ["DEPLOYED_VERSION_MISMATCH"],
+      "overrideable": false,
+      "evidence_required": ["운영 화면에서 읽은 버전"],
+      "source_reference": "standards/default-gates.md#Gate 5"
+    },
+    {
+      "check_id": "HA-01", "gate": 5, "stage": 5,
+      "description": "실제 모바일 기기 검수 승인",
+      "applies_when": "always",
+      "rule": { "type": "approval_record", "approval_type": "MOBILE_DEVICE_REVIEW", "order": 1, "match": ["fingerprint", "target_version", "operating_url", "run_id"], "statement_non_empty": true, "on_reject": "BLOCKED" },
+      "failure_code": ["APPROVAL_MISSING", "APPROVAL_STALE", "APPROVAL_REJECTED"],
+      "overrideable": false,
+      "evidence_required": ["approvals.json 인덱스"],
+      "source_reference": "docs/harness-orchestrator.md#8. 승인·배포 기록"
+    },
+    {
+      "check_id": "HA-02", "gate": 5, "stage": 5,
+      "description": "홈 아이콘 시각 승인",
+      "applies_when": "pwa_installable == yes",
+      "rule": { "type": "approval_record", "approval_type": "HOME_ICON_REVIEW", "order": 2, "requires_prior": ["HA-01"], "match": ["fingerprint", "target_version", "operating_url", "run_id"], "statement_non_empty": true, "on_reject": "BLOCKED" },
+      "failure_code": ["APPROVAL_MISSING", "APPROVAL_STALE", "APPROVAL_REJECTED"],
+      "overrideable": false,
+      "evidence_required": ["approvals.json 인덱스"],
+      "source_reference": "docs/harness-orchestrator.md#8. 승인·배포 기록"
+    },
+    {
+      "check_id": "HA-03", "gate": 5, "stage": 5,
+      "description": "최종 릴리스 승인",
+      "applies_when": "always",
+      "rule": { "type": "approval_record", "approval_type": "FINAL_RELEASE", "order": 3, "requires_prior": ["HA-01", "HA-02 (해당 시)"], "match": ["fingerprint", "target_version", "operating_url", "run_id"], "statement_non_empty": true, "on_reject": "BLOCKED" },
+      "failure_code": ["APPROVAL_MISSING", "APPROVAL_STALE", "APPROVAL_REJECTED"],
+      "overrideable": false,
+      "evidence_required": ["approvals.json 인덱스"],
+      "source_reference": "docs/harness-orchestrator.md#8. 승인·배포 기록"
+    },
+    {
+      "check_id": "JG-01", "gate": 0, "stage": 5,
+      "description": "근거 없는 통과 금지 (불변 원칙 1)",
+      "applies_when": "always",
+      "rule": {
+        "type": "evidence_integrity",
+        "max_pass_without_evidence": 0,
+        "max_pass_with_stale_fingerprint": 0,
+        "max_not_applicable_without_reason": 0,
+        "max_approval_without_statement": 0
+      },
+      "failure_code": ["UNVERIFIED_PASS"],
+      "overrideable": false,
+      "evidence_required": ["위반 check_id 목록"],
+      "source_reference": "docs/story-service.md#최상위 불변 원칙"
+    },
+    {
+      "check_id": "JG-02", "gate": 0, "stage": 5,
+      "description": "완료 기준 재판정과 릴리스 기록 생성·확인 (2 phase)",
+      "applies_when": "always",
+      "rule": {
+        "type": "completion",
+        "phases": {
+          "pre_record": {
+            "requires_run_status": "AWAITING_APPROVAL",
+            "release_record_must_not_exist": "releases/<app-slug>/v<target_version>.md",
+            "allowed_item_status": ["PASS", "NOT_APPLICABLE"],
+            "max_count": { "NOT_RUN": 0, "IN_PROGRESS": 0, "NEEDS_ATTENTION": 0, "FAIL": 0, "AWAITING_APPROVAL": 0 },
+            "scope": "JG-02 자신을 제외한 모든 적용 대상 check",
+            "on_pass": { "release_record_allowed": true },
+            "record_in": "run.json",
+            "bind_to": ["run_id", "app_slug", "target_version", "fingerprint", "operating_url", "standards_version"]
+          },
+          "post_record": {
+            "requires_run_status": "AWAITING_APPROVAL",
+            "requires_latest_pre_record": { "release_record_allowed": true },
+            "pre_record_binding_must_match_current": ["run_id", "app_slug", "target_version", "fingerprint", "operating_url", "standards_version"],
+            "on_binding_mismatch": { "status": "FAIL", "failure_code": "PRE_RECORD_AUTHORIZATION_STALE" },
+            "stale_authorization_refresh": false,
+            "stale_authorization_reuse": false,
+            "release_record_count": 1,
+            "release_record_path": "releases/<app-slug>/v<target_version>.md",
+            "must_match": ["run_id", "app_slug", "target_version", "fingerprint", "operating_url"],
+            "max_conflict_records": 0,
+            "on_pass": { "complete_allowed": true }
+          }
+        },
+        "status_change_by": "orchestrator only, after post_record complete_allowed: true"
+      },
+      "failure_code": ["COMPLETION_UNMET", "RELEASE_RECORD_EXISTS", "PRE_RECORD_AUTHORIZATION_STALE", "RELEASE_RECORD_MISMATCH", "RELEASE_RECORD_CONFLICT", "RUNNER_JUDGE_CONFLICT"],
+      "overrideable": false,
+      "evidence_required": ["phase", "상태별 개수", "릴리스 기록 존재·개수", "pre_record 결합값 일치 결과", "필드별 일치 결과", "충돌 기록 수"],
+      "source_reference": "docs/harness-roles.md#1. 역할과 편집 경계"
+    }
+  ]
+}
