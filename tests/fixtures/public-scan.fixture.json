@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "forbidden": [
+    { "id": "PS-FIXTURE-EMAIL", "kind": "email", "match": "literal", "value": "leak-owner@example.invalid" },
+    { "id": "PS-FIXTURE-PATH", "kind": "path", "match": "literal", "value": "D:\\fixture-private-workspace" },
+    { "id": "PS-FIXTURE-REPO", "kind": "repository", "match": "literal", "value": "example-org/fixture-private-repo" },
+    { "id": "PS-FIXTURE-OTHER", "kind": "other", "match": "regex", "value": "\\bfixture-codename\\b", "note": "자동 테스트 전용 값이다 (example.invalid 계열, 실제 값 아님)." }
+  ]
+}

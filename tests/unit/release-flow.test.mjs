@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { REPO, makeHarnessCopy, mkTemp, rm } from './helpers.mjs';
+import { REPO, localIdentifiersPath, makeHarnessCopy, mkTemp, rm } from './helpers.mjs';
 import { loadChecks } from '../../scripts/lib/checks.mjs';
 import { urlConfirmation } from '../../scripts/lib/approvals.mjs';
 import { writeNoClobber } from '../../scripts/lib/result.mjs';
@@ -84,7 +84,7 @@ before(() => {
   fs.symlinkSync(path.join(REPO, 'node_modules'), path.join(root, 'node_modules'), 'junction');
   data = loadChecks(root).data;
   const inputFile = path.join(tmp, 'input.json');
-  fs.writeFileSync(inputFile, JSON.stringify({ app_path: SAMPLE, target_version: '1.0.0', change_summary: '하네스 v1 흐름 검증', release_phase: 'predeploy', flags: FLAGS, overrides: [] }));
+  fs.writeFileSync(inputFile, JSON.stringify({ app_path: SAMPLE, target_version: '1.0.1', change_summary: '하네스 v1 흐름 검증', release_phase: 'predeploy', flags: FLAGS, overrides: [] }));
   const started = json(node([script('orchestrator/start-run.mjs'), inputFile]));
   assert.equal(started.created, true);
   baseRun = path.join(root, ...started.run_dir.split('/'));
@@ -240,7 +240,7 @@ test('[judge_unit, end_to_end:false] pre_record → 릴리스 기록 → post_re
   assert.equal(readJson(dir, 'run.json').pre_record_authorizations.length, 1);
 
   const w = writeRelease(dir);
-  assert.equal(w.written, 'releases/sample-app/v1.0.0.md');
+  assert.equal(w.written, 'releases/sample-app/v1.0.1.md');
   assert.equal(writeRelease(dir).error_code, 'RELEASE_RECORD_EXISTS');
 
   out = JSON.parse(judge(dir).stdout);
@@ -285,7 +285,7 @@ test('[judge_unit] S1 stage 4 선실행 → 확인·새 deployment → stage 4 �
   out = JSON.parse(judge(dir).stdout);
   assert.equal(out.verdict.release_record_allowed, true, JSON.stringify(out.stage5.items.map((i) => [i.check_id, i.status, i.failure_code])));
   recordJudgement(dir);
-  assert.equal(writeRelease(dir).written, 'releases/sample-app/v1.0.0.md');
+  assert.equal(writeRelease(dir).written, 'releases/sample-app/v1.0.1.md');
   out = JSON.parse(judge(dir).stdout);
   assert.equal(out.verdict.phase, 'post_record');
   assert.equal(out.verdict.complete_allowed, true);
@@ -303,7 +303,52 @@ test('[judge_unit] S2 pre_record 허가 뒤 거절이 추가되면 릴리스 파
   assert.equal(readJson(dir, 'run.json').pre_record_authorizations.length, 1);
   assert.equal(approve(dir, 'FINAL_RELEASE', 'REJECT', '잠깐, 최종 릴리스 거절할게요').recorded, true);
   assert.equal(writeRelease(dir).error_code, 'PRE_RECORD_CONDITION_UNMET');
-  assert.equal(fs.existsSync(path.join(root, 'releases', 'sample-app', 'v1.0.0.md')), false);
+  assert.equal(fs.existsSync(path.join(root, 'releases', 'sample-app', 'v1.0.1.md')), false);
+});
+
+test('[judge_unit] 식별자 설정이 바뀌거나 사라지면 judge·record-judgement·write-release가 IN-01·ST-04를 다시 계산해 BLOCKED이고 릴리스 파일을 만들지 않는다', async () => {
+  const dir = cloneRun(baseRun, '20260930-100000-KST-1d1d1d');
+  deploy(dir, 'https://sample.example/');
+  approve(dir, 'OPERATING_URL_CONFIRMATION', 'APPROVE', '운영 주소 맞아요');
+  await writeSyntheticStage4(dir);
+  recordJudgement(dir);
+  for (const t of ['MOBILE_DEVICE_REVIEW', 'HOME_ICON_REVIEW', 'FINAL_RELEASE']) approve(dir, t, 'APPROVE', `${t} 승인`);
+  assert.equal(JSON.parse(judge(dir).stdout).verdict.release_record_allowed, true);
+  recordJudgement(dir);
+  assert.equal(readJson(dir, 'run.json').pre_record_authorizations.length, 1);
+
+  const local = localIdentifiersPath(root);
+  const original = fs.readFileSync(local);
+  const releaseFile = path.join(root, 'releases', 'sample-app', 'v1.0.1.md');
+  try {
+    // 1) 설정이 사라지면 IN-01부터 NEEDS_ATTENTION이다. 실행 상태가 아직 승인 대기여도 write-release는
+    //    파일을 만들기 직전의 재계산에서 거부하고, 이전 pre_record 허가는 재사용되지 않는다.
+    fs.rmSync(local);
+    let out = JSON.parse(judge(dir).stdout);
+    assert.equal(out.verdict.run_status, 'BLOCKED');
+    assert.equal(out.stage1.items[0].failure_code, 'IDENTIFIERS_CONFIG_MISSING');
+    assert.equal(out.stage2, null);
+    assert.equal(readJson(dir, 'run.json').status, 'AWAITING_APPROVAL');
+    assert.equal(writeRelease(dir).error_code, 'PRE_RECORD_CONDITION_UNMET');
+    assert.equal(fs.existsSync(releaseFile), false);
+
+    // 2) sample-app에 있는 이름을 식별자로 바꾸면 runner의 ST-04 PASS와 재계산 결과가 달라진다.
+    fs.writeFileSync(local, JSON.stringify({ schema_version: '1.0.0', identifiers: [{ id: 'ID-FIXTURE-9', match: 'literal', value: 're-sample-app' }] }));
+    out = JSON.parse(judge(dir).stdout);
+    assert.equal(out.verdict.run_status, 'BLOCKED');
+    assert.equal(out.verdict.release_record_allowed, false);
+    assert.equal(out.stage2.items.find((i) => i.check_id === 'ST-04').failure_code, 'FOREIGN_PROJECT_MIXED');
+    assert.ok(out.runner_comparison.mismatches.some((m) => m.check_id === 'ST-04'));
+    assert.equal(writeRelease(dir).error_code, 'PRE_RECORD_CONDITION_UNMET');
+
+    // 3) record-judgement도 재계산해 BLOCKED를 기록하고, 이후 write-release는 계속 거부한다.
+    assert.equal(recordJudgement(dir).run_status, 'BLOCKED');
+    assert.equal(readJson(dir, 'run.json').status, 'BLOCKED');
+    assert.ok(writeRelease(dir).error_code);
+    assert.equal(fs.existsSync(releaseFile), false);
+  } finally {
+    fs.writeFileSync(local, original);
+  }
 });
 
 // R4: 외부 서비스 없이 COMPLETE 전이 로직을 결정적으로 검증한다. 모의 응답으로 만든 stage 4 결과에 합성 표시를 하지 않아
@@ -317,8 +362,8 @@ test('[judge_unit, end_to_end:false] R4 COMPLETE 전이는 post_record·complete
   for (const t of ['MOBILE_DEVICE_REVIEW', 'HOME_ICON_REVIEW', 'FINAL_RELEASE']) approve(dir, t, 'APPROVE', `${t} 승인`);
   assert.equal(recordJudgement(dir).run_status, 'AWAITING_APPROVAL');
   assert.notEqual(readJson(dir, 'run.json').status, 'COMPLETE');
-  assert.equal(writeRelease(dir).written, 'releases/sample-app/v1.0.0.md');
-  const record = fs.readFileSync(path.join(root, 'releases', 'sample-app', 'v1.0.0.md'), 'utf8');
+  assert.equal(writeRelease(dir).written, 'releases/sample-app/v1.0.1.md');
+  const record = fs.readFileSync(path.join(root, 'releases', 'sample-app', 'v1.0.1.md'), 'utf8');
   assert.ok(!/[?#@]/.test(record.match(/"operating_url": "([^"]*)"/)[1]));
   assert.equal(recordJudgement(dir).run_status, 'COMPLETE');
   assert.equal(readJson(dir, 'run.json').status, 'COMPLETE');

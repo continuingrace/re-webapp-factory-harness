@@ -6,6 +6,8 @@ import { loadChecks } from './checks.mjs';
 import { urlConfirmation } from './approvals.mjs';
 import { resolveRunDir, readRunJson } from './paths.mjs';
 import { currentBinding, currentDeployment, deploymentValid, effectiveInput, latestValidResult, readRunState } from './run-state.mjs';
+import { loadIdentifiers } from './identifiers.mjs';
+import { readClosure } from './closure.mjs';
 import { judgeIntake } from '../stages/stage1-intake.mjs';
 import { judgeStatic } from '../stages/stage2-static.mjs';
 import { evaluateStage3, rawsFromItems } from '../stages/stage3-evaluate.mjs';
@@ -48,17 +50,33 @@ function rejudge(runner, current, evaluate) {
   return { ...base, stale: false, items: judged.items, mismatches, run_status: mismatches.length ? 'BLOCKED' : judged.run_status };
 }
 
-export function computeJudgement(root, runDirArg) {
+// gate-judge·record-judgement·write-release가 모두 이 함수를 쓴다. 판정할 때마다 현재 local 식별자 설정으로
+// IN-01·ST-04를 다시 계산하므로, 설정이 바뀌어 runner 결과와 달라지면 BLOCKED가 된다.
+// identifiers는 테스트용 주입값이며, 없으면 root의 고정 경로에서만 읽는다.
+export function computeJudgement(root, runDirArg, { identifiers } = {}) {
   const rd = resolveRunDir(root, runDirArg);
   if (!rd.ok) return { verdict: ATTENTION, error_code: rd.code };
-  const inputFile = readRunJson(rd.dir, 'input.json');
-  if (!inputFile.ok) return { verdict: ATTENTION, error_code: inputFile.code };
   const { data, errors } = loadChecks(root);
   if (errors.length) return { verdict: ATTENTION, error_code: 'CHECKS_INVALID' };
+  // 닫힌 실행은 다시 판정하지 않고 닫힌 상태를 그대로 보고한다. 릴리스·완료 허가는 항상 false다.
+  const closure = readClosure(rd.dir);
+  if (closure.state === 'INVALID') return { verdict: ATTENTION, error_code: closure.code };
+  if (closure.state === 'CLOSED') {
+    const c = closure.value;
+    return {
+      judge: 'gate-judge',
+      standards_version: data.standards_version,
+      closure: { status: c.status, kind: c.kind, basis: c.basis, superseded_by: c.superseded_by, recorded_at: c.recorded_at },
+      verdict: { run_status: c.status, phase: null, release_record_allowed: false, complete_allowed: false },
+    };
+  }
+  const inputFile = readRunJson(rd.dir, 'input.json');
+  if (!inputFile.ok) return { verdict: ATTENTION, error_code: inputFile.code };
   const rawInput = inputFile.value;
+  const ids = identifiers ?? loadIdentifiers(root, data.policies.private_identifiers);
 
-  const stage1 = judgeIntake({ root, checksData: data, input: rawInput });
-  const stage2 = stage1.run_status === 'IN_PROGRESS' ? judgeStatic({ root, checksData: data, input: rawInput }) : null;
+  const stage1 = judgeIntake({ root, checksData: data, input: rawInput, identifiers: ids });
+  const stage2 = stage1.run_status === 'IN_PROGRESS' ? judgeStatic({ root, checksData: data, input: rawInput, identifiers: ids }) : null;
   const runner2 = latestValidResult(rd.dir, '02-static');
   const current2 = stage2 ? { fingerprint: stage2.fingerprint, standards_version: data.standards_version } : null;
   const stale2 = Boolean(stage2 && runner2.value && staleReason(runner2.value, current2));

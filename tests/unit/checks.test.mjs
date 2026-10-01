@@ -6,9 +6,9 @@ import { appliesWhen, getOverride, loadChecks, validateChecks } from '../../scri
 const { data } = loadChecks(REPO);
 const clone = () => JSON.parse(JSON.stringify(data));
 
-test('현재 checks.json은 스키마 오류가 없고 check 32개다', () => {
+test('현재 checks.json은 스키마 오류가 없고 check 36개다', () => {
   assert.deepEqual(validateChecks(data), []);
-  assert.equal(data.checks.length, 32);
+  assert.equal(data.checks.length, 36);
 });
 
 test('최상위 필드 누락을 오류로 보고한다', () => {

@@ -1,14 +1,14 @@
 {
   "schema_version": "1.0.0",
-  "standards_version": "1.5.1",
+  "standards_version": "1.8.3",
   "source_documents": [
-    { "path": "standards/default-design.md", "sha256": "6ac815672d8df23f179f33e05654c3ad2d0a7a433abd30ac3a97cf85a542776e" },
-    { "path": "standards/default-gates.md", "sha256": "3a6ee5ab779a3d0f81c0b0b73f38c349320cb849e0bd43e45fcec1d5f94b39e1" },
-    { "path": "docs/harness-purpose.md", "sha256": "5526489a68e00209010d696fa07eef80357301a175d3da5685b19ca04301c755" },
-    { "path": "docs/harness-artifacts.md", "sha256": "555c6a8c2aa13d94ef856e737422f9d382609ec54af83bcce8062b08d059b4a0" },
-    { "path": "docs/story-service.md", "sha256": "5174f65d5529e3ff30fa00523e77960510051615cad61cc80f9d304905ed7b0e" },
-    { "path": "docs/harness-roles.md", "sha256": "cea20662bbdac9b3b36456619bb18f6a2d1634845a1a9e5ab07f6985a3d34b1b" },
-    { "path": "docs/harness-orchestrator.md", "sha256": "42b9860320487394093218d4fe39ddb77816f2c91b7bbfecb7aa74452c7e1fcc" }
+    { "path": "standards/default-design.md", "sha256": "1bb9effb98a1a37513aee59afec4770b5bd16d3d8f5bcb7ae5e264fc4f152393" },
+    { "path": "standards/default-gates.md", "sha256": "cd5e8dfc8b71225a801dfcdb4acef4bad35ee31987a197f7e1e0382443f72427" },
+    { "path": "docs/harness-purpose.md", "sha256": "f4f617e80dffd964b156c634371ae1e26ec4c604581d43799e9cf83768da462c" },
+    { "path": "docs/harness-artifacts.md", "sha256": "0907d9ce5f82698cbfeedeefe290df307a726590915a1d7eda2e7aa54527aa11" },
+    { "path": "docs/story-service.md", "sha256": "a744efe5cb6a47bc759ee3eac4d25e91ae7207bc6742e8b79b696af5859ff618" },
+    { "path": "docs/harness-roles.md", "sha256": "b287da5146983404e2f0fbc9bdcb3f6c59da9186d5ceebbb323c12206dd9ca06" },
+    { "path": "docs/harness-orchestrator.md", "sha256": "c5311c4c4ad5f7023fa5337121e3d4b6a4eab80845a282eb7ce98cb6f9fd1d5f" }
   ],
   "required_tools": [
     { "name": "node", "min_version": "20", "used_by_stage": [1, 2, 3, 4, 5] },
@@ -77,6 +77,24 @@
       "binary_files_in_secret_and_identifier_scan": "scan_as_latin1",
       "skip_allowed": false
     },
+    "private_identifiers": {
+      "applies_to": ["IN-01", "ST-04"],
+      "config_path": "config/identifiers.local.json",
+      "schema_path": "config/identifiers.schema.json",
+      "max_bytes": 65536,
+      "match": { "literal": "regex escape 후 비교", "regex": "명시한 항목만 컴파일" },
+      "case_insensitive": true,
+      "path_override": "불가 (대상 앱 파일·CLI 인자·환경 변수)",
+      "on_unavailable": { "IN-01": "NEEDS_ATTENTION", "run_status": "BLOCKED", "ST-04": "NOT_RUN" },
+      "failure_codes": {
+        "IDENTIFIERS_CONFIG_MISSING": "파일 없음",
+        "IDENTIFIERS_CONFIG_INVALID": "일반 파일 아님·경로 이탈·크기 초과·JSON 오류·빈 목록·schema 위반·id 중복·공백 value",
+        "IDENTIFIERS_PATTERN_INVALID": "컴파일 불가 regex·빈 문자열에 길이 0으로 일치하는 regex"
+      },
+      "zero_length_match_during_scan": { "status": "NEEDS_ATTENTION", "failure_code": "CHECK_INCONCLUSIVE" },
+      "rejudge": "gate-judge·record-judgement·write-release는 판정마다 현재 설정으로 IN-01·ST-04를 다시 계산한다. 설정 해시는 기록하지 않는다",
+      "evidence": "opaque id·가린 경로·건수만. 설정 값·regex 원문·JSON 오류 원문 금지"
+    },
     "missing_tool": { "status": "NEEDS_ATTENTION", "failure_code": "TOOL_MISSING" },
     "inconclusive": {
       "status": "NEEDS_ATTENTION",
@@ -98,6 +116,91 @@
       "newline": { "from": ["\r\n", "\r"], "to": "\n" },
       "encode": "utf-8",
       "applies_to": ["source_documents 기록", "ST-06 재검사"]
+    },
+    "run_closure": {
+      "statuses": { "CANCELLED": "취소됨", "SUPERSEDED": "폐기(대체됨)" },
+      "helper": "scripts/orchestrator/close-run.mjs",
+      "record_file": "closure.json",
+      "kinds": {
+        "cancel": { "status": "CANCELLED", "basis": ["USER_CANCEL"], "superseded_by": "허용하지 않음" },
+        "supersede": { "status": "SUPERSEDED", "basis": ["STANDARDS_CHANGED", "REPLACED_BY_RUN"], "superseded_by": "REPLACED_BY_RUN이면 필수. 있으면 같은 app_slug의 존재하는 열린 실행이어야 한다" }
+      },
+      "standards_changed": "실행 결과(가장 뒤 단계의 최신 유효 결과)의 standards_version이 현재와 다를 때만",
+      "cannot_close": ["COMPLETE", "CANCELLED", "SUPERSEDED", "닫기 기록이 이미 있음"],
+      "irreversible": true,
+      "write": "closure.json 하나만 exclusive create. 기존 실행 파일·사용자 원문 파일은 바꾸거나 지우지 않는다 (실패 시에도)",
+      "integrity": {
+        "include": ["input.json", "run.json", "approvals.json", "0[1-5]-<stage>.a<N>.json", "evidence/ 아래 파일"],
+        "exclude": ["closure.json", "report.md"],
+        "other_files": "닫기 거부 (CLOSURE_UNEXPECTED_FILE), link는 CLOSURE_LINK_IN_RUN",
+        "on_mismatch": "CLOSURE_INTEGRITY_MISMATCH → 진행 helper 거부, judge는 NEEDS_ATTENTION"
+      },
+      "effect": "run-stage·write-release·record-judgement·record-approval·set-deployment는 RUN_CLOSED로 거부. judge는 닫힌 상태를 보고하고 release_record_allowed·complete_allowed는 false",
+      "statement": "사용자 원문 --statement-file (요약·보완하지 않음, 출력하지 않음)"
+    },
+    "run_report": {
+      "helper": "scripts/orchestrator/report-run.mjs",
+      "output": "runs/<slug>/<run_id>/report.md (파생 문서. 다시 만들면 교체하며 closure 불변성 해시 대상이 아니다)",
+      "authoritative": false,
+      "sources": ["input.json", "run.json", "approvals.json", "단계 결과 01~05", "closure.json"],
+      "on_source_invalid": "원본이 없거나 손상됐거나 closure 무결성이 맞지 않으면 만들지 않는다 (부분 보고서 없음)",
+      "format": "UTF-8, LF, 생성 시각 없음, 단계 번호·check_id·파일 이름 순 정렬, 같은 원본이면 같은 결과",
+      "excluded": ["앱 절대경로", "사용자 원문(statement)", "evidence 원문", "local 설정 값", "URL의 사용자정보·경로·query·fragment (scheme·host만)"],
+      "run_status_labels": {
+        "IN_PROGRESS": "진행 중", "AWAITING_APPROVAL": "승인 대기", "AWAITING_DEPLOYMENT": "배포 대기", "COMPLETE": "완료",
+        "BLOCKED": "진행 불가", "CANCELLED": "취소됨", "SUPERSEDED": "폐기(대체됨)"
+      },
+      "item_status_labels": {
+        "NOT_RUN": "미실행", "IN_PROGRESS": "진행 중", "PASS": "통과", "NOT_APPLICABLE": "적용 대상 아님", "NEEDS_ATTENTION": "확인 필요",
+        "FAIL": "실패", "AWAITING_APPROVAL": "사용자 승인 대기"
+      }
+    },
+    "public_export": {
+      "applies_to": ["scripts/release/export-public.mjs", "scripts/release/scan-public.mjs"],
+      "source": "지정한 commit의 추적 파일만 (git 객체). manifest·map·standards_version도 그 commit의 것을 쓴다",
+      "manifest_path": "scripts/release/public-manifest.json",
+      "map_path": "ops/public-map.json",
+      "map_entry": {
+        "required": ["export_id", "kind", "standards_version", "date", "private_commit", "public_commit"],
+        "optional": ["private_standards_version"],
+        "scan_metadata": {
+          "fields": ["scanner_standards_version", "scanned_at", "scan"],
+          "all_or_none": true,
+          "scan": { "result": "PASS", "findings": 0, "file_count": "양의 정수", "tree_sha256": "64자리 hex" },
+          "note": "public 반영 뒤 export 항목에 기록한다. 기존 submission 항목에는 추가하지 않는다. local 설정 값은 기록하지 않는다"
+        },
+        "other_fields": "거부 (PUBLIC_MAP_INVALID)"
+      },
+      "export_dir": ".export",
+      "export_id_pattern": "^pub-(\\d{8})-(\\d{2})$",
+      "generated": { "PUBLIC_RELEASES.md": "export_id·kind·standards_version·날짜만. commit SHA·경로·메모는 넣지 않는다" },
+      "scan_config": { "config_path": "config/public-scan.local.json", "schema_path": "config/public-scan.schema.json", "max_bytes": 65536 },
+      "requires": ["policies.private_identifiers 설정", "scan_config 설정"],
+      "on_unavailable": "export 중단, partial 폴더를 만들지 않음 (IDENTIFIERS_CONFIG_* 또는 PUBLIC_SCAN_CONFIG_*)",
+      "staging": "<export_dir>/<export_id>.partial에 만든 뒤 모든 검사가 통과하면 <export_dir>/<export_id>로 이름을 바꾼다. 둘 중 하나라도 이미 있으면 중단하고 덮어쓰지 않는다",
+      "scan": ["manifest allowlist 밖 파일", "manifest exclude 경로", "symlink·junction·특수 파일", "ST-03 env_files_fail", "ST-03 rule.patterns", "policies.evidence_text.private_key_block.begin", "absolute_path_patterns", "commit_sha", "비공개 식별자", "scan_config 차단 목록 (attribution_exemptions 한 줄 제외)"],
+      "commit_sha": {
+        "rule_id": "PUB-COMMIT-SHA",
+        "sources": ["map의 private_commit·public_commit", "export 대상 commit", "private 저장소 전체 도달 가능 이력 (git rev-list --all)"],
+        "token": "앞뒤에 영문자·숫자가 붙지 않은 7~40자리 hex 토큰 (대소문자 무시)",
+        "match": "토큰이 위 SHA 중 하나의 prefix이면 차단. 파일 내용과 상대경로 모두 검사",
+        "not_matched": ["6자리 이하", "영문자·숫자에 붙은 문자열", "40자리를 넘는 hex(예: 64자리 해시)의 일부"],
+        "on_history_unavailable": "PRIVATE_HISTORY_UNAVAILABLE로 중단 (export·scan)",
+        "output": "SHA 값은 출력하지 않는다"
+      },
+      "absolute_path_patterns": {
+        "PUB-ABS-PATH-WIN": "[A-Za-z]:[\\\\/]+(?:Users|Documents and Settings)[\\\\/]+[^\\\\/\\s\"'*?<>|:]+",
+        "PUB-ABS-PATH-MAC": "/Users/[A-Za-z0-9._-]+",
+        "PUB-ABS-PATH-LINUX": "/home/[A-Za-z0-9._-]+"
+      },
+      "user_name_exemptions": "없음. 특정 사용자 이름을 예외로 두지 않는다 (예시 설정은 사용자 경로 형태를 쓰지 않는다)",
+      "attribution_exemptions": [
+        { "id": "ATTR-EXTERNAL-DESIGN", "path": "docs/harness-limitations.md", "line_sha256": "705725f3f00e7982a10b847716a6d9e831dab4a660083b0c84b934f60a17c4f2", "applies_to": "scan_config" }
+      ],
+      "attribution_exemption_rule": "외부 참고 자료 출처 표기 한 줄. 정확한 경로(대소문자 구분)의 파일에서 CR을 뺀 줄의 sha256이 같은 줄만 scan_config 차단 목록 검사에서 뺀다. 비밀·개인키·개인 경로·commit SHA·비공개 식별자 규칙과 경로 이름 검사는 그대로 적용한다. 같은 줄이 두 번 이상이면 ATTRIBUTION_DUPLICATE로 막고, 정책 형식이 틀리면 ATTRIBUTION_POLICY_INVALID로 검사하지 않는다",
+      "reproducible": "같은 commit·export_id·그 commit의 map이면 출력 경로와 관계없이 파일 목록과 내용 해시가 같다",
+      "network": "사용하지 않는다. git은 scripts/lib/git-read.mjs를 통해 rev-parse·ls-tree·cat-file·rev-list만 쓰며 push·fetch·remote·commit·config와 원격 변경 기능을 두지 않는다",
+      "evidence": "규칙 id·가린 경로·건수만. 값·일치 문자열·해당 줄은 출력하지 않는다"
     }
   },
   "checks": [
@@ -113,11 +216,12 @@
         "release_phase": ["predeploy", "postdeploy"],
         "flags": { "sticky_preview": ["yes", "no"], "effect_font": ["yes", "no"], "local_state": ["yes", "no"], "pwa_installable": ["yes", "no"] },
         "app_slug_regex": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
-        "operating_url_required_when": "release_phase == postdeploy"
+        "operating_url_required_when": "release_phase == postdeploy",
+        "private_identifiers": "policies.private_identifiers를 불러올 수 있는지만 확인한다. 앱 내용 탐지는 ST-04가 한다"
       },
-      "failure_code": ["INPUT_INVALID", "APP_SLUG_INVALID", "APP_SLUG_COLLISION"],
+      "failure_code": ["INPUT_INVALID", "APP_SLUG_INVALID", "APP_SLUG_COLLISION", "IDENTIFIERS_CONFIG_MISSING", "IDENTIFIERS_CONFIG_INVALID", "IDENTIFIERS_PATTERN_INVALID"],
       "overrideable": false,
-      "evidence_required": ["검사한 필드 목록", "위반 필드"],
+      "evidence_required": ["검사한 필드 목록", "위반 필드", "식별자 설정 상태"],
       "source_reference": "docs/harness-purpose.md#3"
     },
     {
@@ -187,19 +291,19 @@
     },
     {
       "check_id": "ST-04", "gate": 1, "stage": 2,
-      "description": "WORK_PROJECT·IHIRI 혼입 금지 (불변 원칙 2)",
+      "description": "비공개 업무·개인 프로젝트 식별자 혼입 금지 (불변 원칙 2)",
       "applies_when": "always",
       "rule": {
         "type": "pattern_absent",
         "scope": "app_path, policies.scan_exclude 적용",
         "targets": ["path", "content"],
-        "case_insensitive": true,
-        "patterns": { "ID-WORK-PROJECT": "\\bwork_project\\b", "ID-IHIRI": "ihiri", "ID-WORK-BRAND-A": "WORK_BRAND_A", "ID-WORK-BRAND-B": "WORK_BRAND_B" },
+        "identifiers_from": "policies.private_identifiers",
+        "on_config_unavailable": "NOT_RUN (IN-01이 NEEDS_ATTENTION, 실행 BLOCKED)",
         "max_hits": 0
       },
       "failure_code": ["FOREIGN_PROJECT_MIXED"],
       "overrideable": false,
-      "evidence_required": ["발견 경로", "식별자 ID"],
+      "evidence_required": ["발견 경로 (식별자 부분은 [id]로 가림)", "식별자 ID"],
       "source_reference": "docs/story-service.md#최상위 불변 원칙"
     },
     {
@@ -251,7 +355,7 @@
       "check_id": "DS-02", "gate": 2, "stage": 2,
       "description": "radius",
       "applies_when": "always",
-      "rule": { "type": "css_property_values", "property": "border-radius", "allowed": ["0", "16px", "24px", "9999px"], "allowed_for_icon": ["30%"] },
+      "rule": { "type": "css_property_values", "property": "border-radius", "allowed": ["0", "12px", "16px", "9999px"], "allowed_for_icon": ["30%"] },
       "failure_code": ["DESIGN_RADIUS"],
       "overrideable": true,
       "evidence_required": ["위반 선택자와 값", "적용 기준"],
@@ -296,6 +400,16 @@
       "overrideable": true,
       "evidence_required": ["위반 선택자와 값", "적용 기준"],
       "source_reference": "standards/default-design.md#Spacing & Shape"
+    },
+    {
+      "check_id": "DS-07", "gate": 2, "stage": 2,
+      "description": "글자 크기 단계",
+      "applies_when": "always",
+      "rule": { "type": "css_property_values", "property": "font-size", "unit": "px", "allowed": [12, 13, 15, 17, 18, 20, 24, 28, 32] },
+      "failure_code": ["DESIGN_FONT_SIZE"],
+      "overrideable": true,
+      "evidence_required": ["위반 선택자와 값", "판정할 수 없는 값(px 외 단위·var()·calc()는 다른 DS와 같이 NEEDS_ATTENTION)", "적용 기준"],
+      "source_reference": "standards/default-design.md#Typography"
     },
     {
       "check_id": "MB-01", "gate": 3, "stage": 3,
@@ -366,6 +480,42 @@
       "overrideable": false,
       "evidence_required": ["viewport별 scrollWidth", "viewport별 clientWidth", "viewport별 차이값"],
       "source_reference": "standards/default-gates.md#Gate 3"
+    },
+    {
+      "check_id": "MB-08", "gate": 3, "stage": 3,
+      "description": "필드 그룹 간격 (design contract)",
+      "applies_when": "always",
+      "rule": { "type": "browser_field_group_spacing", "viewport": [390, 844], "group_selector": "[data-ui=field-group]", "field_selector": "[data-ui=field]", "label_selector": "label, [data-type=label]", "max_label_to_field_px": 8, "min_field_to_next_px": 12, "tolerance_px": 0.5, "no_contract": "NOT_APPLICABLE", "partial_contract": "FAIL" },
+      "failure_code": ["FIELD_SPACING", "FIELD_GROUP_WITHOUT_FIELD", "FIELD_OUTSIDE_GROUP", "CHECK_INCONCLUSIVE"],
+      "overrideable": true,
+      "evidence_required": ["그룹별 라벨→field·field→다음 요소 간격", "적용 기준"],
+      "source_reference": "standards/default-design.md#Design Contract"
+    },
+    {
+      "check_id": "MB-09", "gate": 3, "stage": 3,
+      "description": "글자 역할 토큰 (design contract)",
+      "applies_when": "always",
+      "rule": { "type": "browser_type_tokens", "viewport": [390, 844], "selector": "[data-type]", "attribute": "data-type", "tolerance_px": 0.5,
+        "tokens": { "display": [32, 700], "title": [28, 700], "section": [24, 700], "subsection": [20, 700], "subsection-sm": [18, 700], "emphasis": [17, 600], "body-lg": [17, 300], "body": [15, 400], "body-sm": [13, 400], "label": [12, 600], "caption": [12, 400] },
+        "no_contract": "NOT_APPLICABLE", "partial_contract": "FAIL" },
+      "failure_code": ["TYPE_TOKEN_MISMATCH", "TYPE_TOKEN_UNKNOWN", "CONTRACT_INCOMPLETE", "CHECK_INCONCLUSIVE"],
+      "overrideable": true,
+      "evidence_required": ["요소별 선언 토큰과 계산된 크기·굵기", "적용 기준"],
+      "source_reference": "standards/default-design.md#Design Contract"
+    },
+    {
+      "check_id": "MB-10", "gate": 3, "stage": 3,
+      "description": "역할별 radius (design contract)",
+      "applies_when": "always",
+      "rule": { "type": "browser_radius_roles", "viewport": [390, 844], "selector": "[data-ui]", "attribute": "data-ui", "tolerance_px": 0.5,
+        "roles": { "field": "12px", "button": "12px", "card": "16px", "pill": "9999px" },
+        "contract_roles": ["field-group", "field", "button", "card", "pill"],
+        "pill_role": "pill", "pill_candidates": "button, [role=button], input[type=button], input[type=submit], input[type=reset]",
+        "no_contract": "NOT_APPLICABLE", "partial_contract": "FAIL" },
+      "failure_code": ["RADIUS_ROLE_MISMATCH", "PILL_ROLE_MISSING", "CONTRACT_INVALID", "CONTRACT_INCOMPLETE", "CHECK_INCONCLUSIVE"],
+      "overrideable": true,
+      "evidence_required": ["요소별 역할과 계산된 radius", "pill 형태 버튼의 역할", "적용 기준"],
+      "source_reference": "standards/default-design.md#Design Contract"
     },
     {
       "check_id": "FA-01", "gate": 4, "stage": 3,

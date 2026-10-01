@@ -12,17 +12,28 @@
 ## 1. 저장소 구조
 
 ```text
+README.md                  소개·설치·테스트·기본 사용법 (private·public 공통)
 docs/                      기준·설계 문서
+├─ harness-limitations.md  알려진 한계와 미검증 범위 (public 포함)
+└─ harness-operations.md   private 운영 절차 (public export 제외)
 standards/
 ├─ default-design.md       사람이 읽는 생성 앱 기본 디자인
 ├─ default-gates.md        사람이 읽는 Gate 설명
 └─ checks.json             기계 판정 SSOT (R5에서 작성)
 fixtures/sample-app/       실습용 샘플 앱
+config/
+├─ *.schema.json           local 설정 형식 (추적)
+├─ *.example.json          예시 값만 있는 설정 (추적)
+└─ *.local.json            실제 비공개 설정 (.gitignore, 커밋 안 함, Claude 직접 접근 차단)
 scripts/                   판정 스크립트 (구현 라운드에서 작성)
-tests/                     단위 테스트·mutation 정의·기대 결과
+scripts/tools/             개발용 도구 (추적 파일의 비공개 식별자 검사 등)
+scripts/release/           public export·scan (지정 commit의 추적 파일만, allowlist manifest, 네트워크·push 없음)
+ops/public-map.json        공개 이력 대응표 (private 전용, export 제외. private·public commit 대응 기록)
+tests/                     단위 테스트·mutation 정의·기대 결과·fixture 식별자 설정
 .claude/settings.json      project hook(PreToolUse → scripts/hook-guard.mjs)과 git push 차단 권한
 .claude/agents/            harness-runner·release-recorder·gate-judge 정의와 agent 전용 hook
 .harness-inbox/            사용자 원문(--statement-file) 임시 보관 (.gitignore, 커밋 안 함)
+.export/                   public export staging (.gitignore, 커밋 안 함)
 runs/                      실행 결과 (.gitignore, 커밋 안 함)
 releases/                  릴리스 기록 (커밋 대상)
 ```
@@ -39,7 +50,9 @@ runs/<app-slug>/<run_id>/
 ├─ 04-production.a1.json
 ├─ approvals.json          사람 승인 기록
 ├─ evidence/               스크린샷 등 단계 근거 파일 (harness-runner만 작성)
-└─ 05-release.a1.json
+├─ 05-release.a1.json
+├─ closure.json            실행 닫기 기록 (CANCELLED·SUPERSEDED일 때만, 2-2)
+└─ report.md               사람이 읽는 파생 요약 보고서 (판정 근거 아님, 2-3)
 
 releases/<app-slug>/v<x.y.z>.md
 ```
@@ -78,6 +91,22 @@ releases/<app-slug>/v<x.y.z>.md
 - `releases/`는 커밋 대상이다.
 - 릴리스 기록은 실행 상태가 `AWAITING_APPROVAL`이고 `gate-judge`의 `pre_record` 판정이 `release_record_allowed: true`일 때 생성한다. 생성 후 `post_record` 판정이 `complete_allowed: true`일 때 오케스트레이터가 실행 상태를 `COMPLETE`로 변경한다.
 - 동일 앱·동일 버전의 릴리스 기록이 이미 있으면 덮어쓰지 않고 `BLOCKED`.
+
+### 2-2. 실행 닫기 기록 — `closure.json`
+
+- `scripts/orchestrator/close-run.mjs`만 만든다. exclusive create로 한 번만 쓰며 덮어쓰거나 지우지 않는다. 기존 실행 파일은 바꾸지 않는다.
+- 필드: `schema_version`, `run_id`, `app_slug`, `status`(`CANCELLED`·`SUPERSEDED`), `kind`(`cancel`·`supersede`), `basis`(`USER_CANCEL`·`STANDARDS_CHANGED`·`REPLACED_BY_RUN`), `superseded_by`(run_id 또는 null), `previous_status`, `run_standards_version`, `current_standards_version`, 사용자 원문 `statement`, `recorded_at`, `files`(불변성 해시).
+- 불변성 해시 대상: `input.json`, `run.json`, `approvals.json`, 단계 결과(`0N-<단계명>.a<N>.json`), `evidence/` 아래 파일. 제외: `closure.json` 자체와 파생 보고서 `report.md`. 그 밖의 파일·link가 있으면 닫지 않는다.
+- 읽을 때마다 해시를 다시 계산한다. 닫기 기록이 깨졌거나 기존 파일이 바뀌었으면 `CLOSURE_INVALID`·`CLOSURE_INTEGRITY_MISMATCH`로 모든 진행 helper가 거부하고 judge는 `NEEDS_ATTENTION`을 낸다.
+- 규칙 SSOT: `standards/checks.json` `policies.run_closure`.
+
+### 2-3. 실행 요약 보고서 — `report.md`
+
+- `scripts/orchestrator/report-run.mjs`가 공식 JSON(`input.json`·`run.json`·`approvals.json`·단계 결과·`closure.json`)을 읽기만 하고 만드는 **파생 문서**다. 판정 근거가 아니며 상단에 그 사실을 표시한다. 다시 만들면 교체한다.
+- 원본이 없거나 손상됐거나 닫기 기록 무결성이 맞지 않으면 만들지 않는다. 임시 파일에 쓴 뒤 교체하므로 부분 보고서가 남지 않는다.
+- 같은 원본이면 같은 바이트: UTF-8, LF, 생성 시각 없음, 단계 번호·check_id·파일 이름 순 정렬.
+- 넣지 않는 것: 앱 절대경로, 사용자 원문, evidence 원문, local 설정 값, URL의 사용자정보·경로·query·fragment(운영 주소는 scheme·host만).
+- `closure.json` 불변성 해시 대상이 아니므로 닫힌 실행에서도 다시 만들 수 있다. 규칙 SSOT: `policies.run_report`.
 
 ## 3. 규칙 SSOT — `standards/checks.json`
 

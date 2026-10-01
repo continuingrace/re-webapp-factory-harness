@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "forbidden": [
+    { "id": "PS-EMAIL-1", "kind": "email", "match": "literal", "value": "someone@example.invalid" },
+    { "id": "PS-PATH-1", "kind": "path", "match": "literal", "value": "example-workspace/private-project" },
+    { "id": "PS-REPO-1", "kind": "repository", "match": "literal", "value": "example-org/example-private-repo" },
+    { "id": "PS-OTHER-1", "kind": "other", "match": "regex", "value": "\\bexample-codename\\b", "note": "예시 값이다. 실제 값은 public-scan.local.json에만 적는다." }
+  ]
+}

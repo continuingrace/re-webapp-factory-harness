@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REPO, goodInput, makeApp, withTemp } from './helpers.mjs';
+import { FIXTURE_IDS, REPO, goodInput, makeApp, withTemp } from './helpers.mjs';
 import { loadChecks } from '../../scripts/lib/checks.mjs';
 import { judgeIntake } from '../../scripts/stages/stage1-intake.mjs';
 
 const { data } = loadChecks(REPO);
-const run = (input, root = REPO) => judgeIntake({ root, checksData: data, input });
+const run = (input, root = REPO) => judgeIntake({ root, checksData: data, input, identifiers: FIXTURE_IDS });
 
 test('유효한 입력은 PASS, 실행 상태 IN_PROGRESS', () => withTemp((t) => {
   const r = run(goodInput(makeApp(t)));

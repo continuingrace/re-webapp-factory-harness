@@ -7,13 +7,13 @@
 
 ## 0. 기준 출처 표시
 
-이 문서는 사용자가 제공한 Huddling 디자인 자료를 참고하되, Huddling의 서비스·브랜드를 복제하지 않고 RE Webapp Factory 운영 화면에 맞게 재구성한다.
+이 문서는 사용자가 제공한 공개 외부 디자인 참고 자료를 참고해 RE Webapp Factory 운영 화면에 맞게 재구성한 것이다. 원 자료에 대한 소유권을 주장하지 않으며, 그 자료의 서비스·브랜드·원문·파일을 복제하지 않는다. 참고 사실과 권리 검토 상태는 `harness-limitations.md` 6절에 둔다.
 
 - **[제공 기준]** 사용자가 제공한 값이나 원칙을 그대로 사용
 - **[Factory 적용]** 제공 기준을 Webapp Factory 목적에 맞게 재해석
 - **[보완값]** 사용자가 지정하지 않아 운영·접근성·QA를 위해 추가한 값
 
-`[보완값]`은 사용자가 다른 값을 정하면 교체할 수 있다. WORK_PROJECT·IHIRI의 디자인 시스템과 자산은 사용하지 않는다.
+`[보완값]`은 사용자가 다른 값을 정하면 교체할 수 있다. 비공개 업무·개인 프로젝트의 디자인 시스템과 자산은 사용하지 않는다.
 
 ---
 
@@ -139,6 +139,8 @@ font-family: "Pretendard Variable", Pretendard, -apple-system,
 | `radius.md` | 24px | 앱 카드, 패널, 미리보기 | 제공 기준 |
 | `radius.full` | 9999px | 버튼, 필터, 배지, 토글 | 제공 기준 |
 | `radius.app-icon` | 30% | 앱 아이콘 squircle | 제공 기준 |
+
+**[Factory 조정]** 개별 앱 기본값과 하네스 판정은 `../standards/default-design.md`의 역할별 radius를 따른다 (입력·버튼 12px, 카드 16px, pill은 chip·tag·badge·toggle만). 위 표는 참고 기준이다.
 
 ### Elevation
 
@@ -311,7 +313,7 @@ font-family: "Pretendard Variable", Pretendard, -apple-system,
 - 음수 자간과 과도하게 좁은 행간을 사용하지 않는다.
 - 모바일을 데스크톱의 단순 축소판으로 만들지 않는다.
 - 미검증 상태를 `passed`로 표시하지 않는다.
-- WORK_PROJECT·IHIRI 디자인, 자산, 프롬프트를 자동 적용하지 않는다.
+- 비공개 업무·개인 프로젝트의 디자인, 자산, 프롬프트를 자동 적용하지 않는다.
 
 ---
 
@@ -334,7 +336,7 @@ font-family: "Pretendard Variable", Pretendard, -apple-system,
 
 ## 12. 참고 자료에서 제외한 요소
 
-다음은 제공 자료의 Huddling 고유 서비스 표현이므로 Webapp Factory 기본값으로 채택하지 않았다.
+다음은 제공 자료의 고유 서비스 표현이므로 Webapp Factory 기본값으로 채택하지 않았다.
 
 - 가격제, Popular 배지와 상업 강조 규칙
 - Awards 트로피·수상자 레이아웃

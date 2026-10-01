@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadChecks } from '../lib/checks.mjs';
+import { loadIdentifiers } from '../lib/identifiers.mjs';
 import { writeNoClobber } from '../lib/result.mjs';
 import { judgeIntake } from '../stages/stage1-intake.mjs';
 import { ROOT, fail, kstRunId, nowIso, out } from './common.mjs';
@@ -13,8 +14,11 @@ function main() {
   const input = JSON.parse(fs.readFileSync(file, 'utf8'));
   const { data, errors } = loadChecks(ROOT);
   if (errors.length) fail('CHECKS_INVALID');
-  const intake = judgeIntake({ root: ROOT, checksData: data, input });
-  if (intake.run_status !== 'IN_PROGRESS') return out({ created: false, run_status: intake.run_status, intake: intake.items[0] }, 1);
+  const identifiers = loadIdentifiers(ROOT, data.policies.private_identifiers);
+  const intake = judgeIntake({ root: ROOT, checksData: data, input, identifiers });
+  if (intake.run_status !== 'IN_PROGRESS') {
+    return out({ created: false, run_status: intake.run_status, intake: intake.items[0], blocked_checks: intake.blocked_checks }, 1);
+  }
 
   const runId = kstRunId();
   const slugDir = path.join(ROOT, 'runs', intake.app_slug);

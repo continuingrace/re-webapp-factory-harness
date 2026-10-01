@@ -1,4 +1,4 @@
-// Stage 2 정적 검사 (ST-01~06, DS-01~06). 판정 값은 checks.json에서만 읽는다.
+// Stage 2 정적 검사 (ST-01~06, DS-01~07). 판정 값은 checks.json에서만 읽는다.
 // 네트워크를 사용하지 않고, 대상 앱과 기준 문서를 수정하지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,10 +8,12 @@ import { normalizedFileHash } from '../lib/hash.mjs';
 import { isInside } from '../lib/paths.mjs';
 import { makeItem, policyCodes, stageRunStatus } from '../lib/result.mjs';
 import { collectCss, CSS_KEYWORDS, normZero, selectorList, tokens } from '../lib/css.mjs';
+import { ZERO_LENGTH_MATCH, countIdentifier, identifiersSummary, maskText } from '../lib/identifiers.mjs';
 
 const STAGE = 2;
 const FAIL_NEXT = '앱 수정 후 2단계부터 재실행';
 const ATTN_NEXT = '사용자 확인 필요';
+const IDENTIFIERS_NEXT = '식별자 설정(config/identifiers.local.json)을 사용자가 직접 확인한 뒤 1단계부터 재실행';
 
 // 바이너리 판별과 비밀·식별자 검사 방식은 checks.json policies.content_scan에서 읽는다.
 function buildContext(fp, scanPolicy) {
@@ -164,28 +166,38 @@ function judgeSecretScan(check, ctx, R) {
   return R.pass(evidence);
 }
 
-function judgePatternAbsent(check, ctx, R) {
+// ST-04: 식별자는 checks.json이 아니라 policies.private_identifiers의 local 설정에서 온다 (env.identifiers).
+// 설정을 불러오지 못했으면 NOT_RUN만 남긴다. evidence에는 opaque id·가린 경로·건수만 담는다.
+function judgePatternAbsent(check, ctx, R, env) {
   const rule = check.rule;
-  const flags = `g${rule.case_insensitive ? 'i' : ''}`;
-  const pats = Object.entries(rule.patterns).map(([id, src]) => [id, new RegExp(src, flags)]);
+  const ids = env.identifiers;
+  if (!ids || !ids.ok) {
+    return R.notRun({ reason: 'IDENTIFIERS_CONFIG_UNAVAILABLE', failure_code: identifiersSummary(ids).failure_code }, IDENTIFIERS_NEXT);
+  }
+  const mask = (rel) => maskText(rel, ids);
   const hits = [];
   const unscanned = [];
   let binaryScanned = 0;
-  for (const rel of ctx.files) {
-    if (rule.targets.includes('path')) {
-      for (const [id, re] of pats) if (countMatches(re, rel)) hits.push({ path: rel, id, target: 'path' });
-    }
-    if (rule.targets.includes('content')) {
-      const s = ctx.scanText(rel);
-      if (!s) { unscanned.push(rel); continue; }
-      if (s.binary) binaryScanned += 1;
-      for (const [id, re] of pats) {
-        const n = countMatches(re, s.text);
-        if (n) hits.push({ path: rel, id, target: 'content', count: n });
+  try {
+    for (const rel of ctx.files) {
+      if (rule.targets.includes('path')) {
+        for (const e of ids.entries) if (countIdentifier(e, rel)) hits.push({ path: mask(rel), id: e.id, target: 'path' });
+      }
+      if (rule.targets.includes('content')) {
+        const s = ctx.scanText(rel);
+        if (!s) { unscanned.push(mask(rel)); continue; }
+        if (s.binary) binaryScanned += 1;
+        for (const e of ids.entries) {
+          const n = countIdentifier(e, s.text);
+          if (n) hits.push({ path: mask(rel), id: e.id, target: 'content', count: n });
+        }
       }
     }
+  } catch (e) {
+    if (e.code !== ZERO_LENGTH_MATCH) throw e;
+    return R.attention(R.inconclusive, { reason: 'ZERO_LENGTH_MATCH', identifiers: ids.entries.map((x) => x.id) });
   }
-  const evidence = { scanned_files: ctx.files.length, binary_scanned_as_latin1: binaryScanned, unscanned, identifiers: pats.map(([id]) => id), hits };
+  const evidence = { scanned_files: ctx.files.length, binary_scanned_as_latin1: binaryScanned, unscanned, identifiers: ids.entries.map((e) => e.id), hits };
   if (hits.length > rule.max_hits) return R.fail(check.failure_code[0], evidence);
   if (unscanned.length) return R.attention(R.inconclusive, { ...evidence, reason: 'FILES_NOT_SCANNED' });
   return R.pass(evidence);
@@ -419,7 +431,8 @@ const JUDGES = {
   css_font_family: judgeFontFamily,
 };
 
-export function judgeStatic({ root, checksData, input }) {
+// identifiers는 호출자가 주입한다 (CLI는 loadIdentifiers(ROOT), 테스트는 fixture). 없으면 설정 없음과 같다.
+export function judgeStatic({ root, checksData, input, identifiers }) {
   const checks = checksData.checks.filter((c) => c.stage === STAGE);
   const fp = computeFingerprint(input.app_path, checksData.policies.fingerprint);
   const baseMeta = { standards_version: checksData.standards_version, policy_codes: policyCodes(checksData) };
@@ -436,7 +449,7 @@ export function judgeStatic({ root, checksData, input }) {
   const ctx = buildContext(fp, checksData.policies.content_scan);
   const meta = { ...baseMeta, fingerprint: fp.value };
   let cssCache = null;
-  const env = { root, checksData, input, css: () => (cssCache ||= collectCss(ctx)) };
+  const env = { root, checksData, input, identifiers, css: () => (cssCache ||= collectCss(ctx)) };
   const inconclusive = checksData.policies.inconclusive.failure_code;
 
   const items = checks.map((check) => {
@@ -445,6 +458,7 @@ export function judgeStatic({ root, checksData, input }) {
       pass: (evidence) => makeItem(check, { status: 'PASS', evidence }, meta),
       fail: (code, evidence) => makeItem(check, { status: 'FAIL', evidence, failure_code: code, next_action: FAIL_NEXT }, meta),
       attention: (code, evidence) => makeItem(check, { status: 'NEEDS_ATTENTION', evidence, failure_code: code, next_action: ATTN_NEXT }, meta),
+      notRun: (evidence, next) => makeItem(check, { status: 'NOT_RUN', evidence, next_action: next }, meta),
     };
     const applies = appliesWhen(check.applies_when, input);
     if (applies === null) return R.attention(inconclusive, { reason: 'APPLIES_WHEN_UNPARSEABLE' });
@@ -466,6 +480,7 @@ export function judgeStatic({ root, checksData, input }) {
     fingerprint: fp.value,
     fingerprint_type: fp.type,
     standards_version: checksData.standards_version,
+    identifiers_config: identifiersSummary(identifiers),
     items,
   };
 }

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { computeJudgement, normalizeJudgement } from '../lib/judge-core.mjs';
 import { resolveRunDir } from '../lib/paths.mjs';
+import { readClosure } from '../lib/closure.mjs';
 import { listAttempts, writeAtomic, writeNoClobber } from '../lib/result.mjs';
 import { BINDING_FIELDS, currentBinding, currentDeployment, latestValidResult, readRunState, releaseFileState, releasePath, sameBinding } from '../lib/run-state.mjs';
 import { JUDGE_RUN_STATUS, ROOT, fail, nowIso, out } from './common.mjs';
@@ -37,6 +38,10 @@ function argValue(name) {
 function main() {
   const rd = resolveRunDir(ROOT, process.argv[2]);
   if (!rd.ok) fail(rd.code);
+  // 닫힌 실행에는 판정을 기록하지 않는다. 닫기 기록이 깨졌으면 그 코드로 거부한다.
+  const closure = readClosure(rd.dir);
+  if (closure.state === 'CLOSED') fail('RUN_CLOSED');
+  if (closure.state === 'INVALID') fail(closure.code);
   const judge = computeJudgement(ROOT, rd.dir);
   if (!judge.judge) fail(judge.error_code || 'JUDGE_UNAVAILABLE');
   const bad = validateJudge(judge, judge.standards_version);

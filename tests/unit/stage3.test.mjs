@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { REPO, makeHarnessCopy, mkTemp, rm, runNode, snapshot, withTemp, makeApp } from './helpers.mjs';
+import { FIXTURE_IDS, REPO, makeHarnessCopy, mkTemp, rm, runNode, snapshot, withTemp, makeApp } from './helpers.mjs';
 import { loadChecks } from '../../scripts/lib/checks.mjs';
 import { computeFingerprint } from '../../scripts/lib/fingerprint.mjs';
 import { judgeIntake } from '../../scripts/stages/stage1-intake.mjs';
@@ -33,8 +33,8 @@ before(() => {
   tmp = mkTemp();
   root = makeHarnessCopy(tmp);
   fs.symlinkSync(path.join(REPO, 'node_modules'), path.join(root, 'node_modules'), 'junction');
-  const raw = { app_path: SAMPLE, target_version: '1.0.0', change_summary: '하네스 v1 검증', release_phase: 'predeploy', flags: FLAGS, overrides: [] };
-  const intake = judgeIntake({ root, checksData: loadChecks(root).data, input: raw });
+  const raw = { app_path: SAMPLE, target_version: '1.0.1', change_summary: '하네스 v1 검증', release_phase: 'predeploy', flags: FLAGS, overrides: [] };
+  const intake = judgeIntake({ root, checksData: loadChecks(root).data, input: raw, identifiers: FIXTURE_IDS });
   assert.equal(intake.items[0].status, 'PASS');
   runDir = path.join(root, 'runs', intake.app_slug, '20260930-090000-KST-t3test');
   fs.mkdirSync(runDir, { recursive: true });
@@ -69,6 +69,81 @@ test('sample-app stage 2·3 적용 항목이 모두 PASS 또는 근거 있는 NO
   for (const i of r.items.filter((x) => x.status === 'NOT_APPLICABLE')) assert.ok(i.evidence.reason);
   assert.equal(r.run_status, 'AWAITING_DEPLOYMENT');
 });
+
+test('sample-app은 design contract를 선언해 MB-08~10이 N/A가 아니라 실제 측정 후 PASS', () => {
+  const r = read3();
+  for (const id of ['MB-08', 'MB-09', 'MB-10']) {
+    const item = r.items.find((i) => i.check_id === id);
+    assert.equal(item.status, 'PASS', `${id}: ${JSON.stringify(item.evidence.derived || item.evidence.reason)}`);
+  }
+  const group = r.items.find((i) => i.check_id === 'MB-08').evidence.derived.results[0];
+  assert.ok(group.field_to_next_px >= 12, '입력창 → 상태 줄 12px 이상');
+});
+
+test('sample-app 버전 위치 동기화: package·화면·README·CHANGELOG 첫 제목·service worker 캐시 이름', () => {
+  const read = (rel) => fs.readFileSync(path.join(SAMPLE, rel), 'utf8');
+  const version = JSON.parse(read('package.json')).version;
+  assert.equal(version, '1.0.1');
+  assert.deepEqual(read('index.html').match(/v\d+\.\d+\.\d+/g), [`v${version}`]);
+  assert.deepEqual(read('README.md').match(/\d+\.\d+\.\d+/g), [version]);
+  assert.equal(read('CHANGELOG.md').match(/^## (\S+)/m)[1], version);
+  assert.equal(read('sw.js').match(/const CACHE = '([^']+)'/)[1], `re-sample-app-v${version}`);
+  assert.equal(read('src/app.js').match(/\d+\.\d+\.\d+/g), null, '진입 JS에는 버전 문자열을 두지 않는다');
+});
+
+test('service worker 갱신: 탭을 닫지 않아도 새 버전이 활성화되고 새 화면·CSS가 보이며, 새로고침은 1회뿐', { timeout: 120000 }, () => withTemp(async (t) => {
+  const { chromium } = await import('playwright');
+  const { startStaticServer } = await import('../../scripts/lib/local-server.mjs');
+  const app = path.join(t, 'sw-app');
+  fs.cpSync(SAMPLE, app, { recursive: true });
+  const server = await startStaticServer(app, data.policies.fingerprint);
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  try {
+    const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    let navigations = 0;
+    page.on('framenavigated', (f) => { if (f === page.mainFrame()) navigations += 1; });
+    const state = () => page.evaluate(async () => ({
+      controlled: Boolean(navigator.serviceWorker.controller),
+      caches: (await caches.keys()).sort(),
+      version: document.querySelector('.version').textContent,
+      background: getComputedStyle(document.body).backgroundColor,
+    }));
+
+    // 첫 방문: 설치 후 clients.claim()으로 제어되지만 새로고침은 일어나지 않는다.
+    await page.goto(`${server.origin}/`, { waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    const first = await state();
+    assert.deepEqual([first.controlled, first.caches, first.version, navigations], [true, ['re-sample-app-v1.0.1'], 'v1.0.1', 1]);
+
+    // 새 버전 배포를 흉내 낸다: 화면 표시·CSS·캐시 이름을 바꾼다.
+    const edit = (rel, from, to) => { const f = path.join(app, rel); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(from, to)); };
+    edit('index.html', 'v1.0.1', 'v1.0.2');
+    edit('sw.js', 're-sample-app-v1.0.1', 're-sample-app-v1.0.2');
+    fs.appendFileSync(path.join(app, 'src', 'style.css'), '\nbody { background: #F3F3F3; }\n');
+
+    navigations = 0;
+    await page.reload({ waitUntil: 'load' });
+    // 자동 새로고침 중에는 evaluate가 끊길 수 있으므로 상태를 직접 polling한다.
+    const deadline = Date.now() + 20000;
+    for (;;) {
+      const s = await state().catch(() => null);
+      if (s && s.caches.join() === 're-sample-app-v1.0.2' && s.background === 'rgb(243, 243, 243)') break;
+      assert.ok(Date.now() < deadline, `새 버전이 20초 안에 적용되지 않음: ${JSON.stringify(s)}`);
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(1500);
+    const second = await state();
+    assert.deepEqual([second.controlled, second.caches, second.version, second.background], [true, ['re-sample-app-v1.0.2'], 'v1.0.2', 'rgb(243, 243, 243)']);
+    assert.equal(navigations, 2, '사용자 새로고침 1회 + 새 service worker가 넘겨받은 뒤 자동 새로고침 1회 (반복 없음)');
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+}));
 
 test('browser evidence: provider, channel, 실제 버전, headless, 시작·종료 시각, 프로필 미사용', () => {
   const b = read3().browser;

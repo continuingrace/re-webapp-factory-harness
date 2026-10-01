@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { computeFingerprint } from './fingerprint.mjs';
+import { readClosure } from './closure.mjs';
 import { isInside, readRunJson } from './paths.mjs';
 import { listAttempts, readStageResult } from './result.mjs';
 
@@ -17,7 +18,12 @@ export function latestValidResult(runDir, prefix) {
   return { file: null, value: null, invalid };
 }
 
+// 닫힌 실행(closure.json)은 진행 상태로 읽지 않는다: 쓰기·진행 helper는 모두 RUN_CLOSED로 거부한다.
+// 닫기 기록이 깨졌거나 기존 파일이 바뀌었으면 그 코드(CLOSURE_*)로 거부한다.
 export function readRunState(runDir) {
+  const closure = readClosure(runDir);
+  if (closure.state === 'CLOSED') return { ok: false, code: 'RUN_CLOSED', closure: closure.value };
+  if (closure.state === 'INVALID') return { ok: false, code: closure.code };
   const input = readRunJson(runDir, 'input.json');
   if (!input.ok) return { ok: false, code: input.code };
   const run = readRunJson(runDir, 'run.json');

@@ -60,8 +60,9 @@
 3. `run.json`이 참조하는 `input.json`, 단계 결과, `approvals.json`을 읽는다.
 4. 현재 fingerprint와 `standards_version`을 확인한다.
 5. 대화 기억이 아니라 파일 근거로만 상태를 판단한다.
+6. `closure.json`이 있으면 닫힌 실행(`CANCELLED`·`SUPERSEDED`)이다. 재개·배포·승인·판정 기록을 하지 않고 닫힌 상태로 보고한다. 새 검수는 새 실행으로 시작한다.
 
-참조 파일이 없거나 실행 폴더 밖을 가리키면 `BLOCKED`.
+참조 파일이 없거나 실행 폴더 밖을 가리키면 `BLOCKED`. 닫기 기록이 깨졌거나 기존 파일이 바뀌었으면(`CLOSURE_*`) `BLOCKED`.
 
 ## 4. 실행 모드 — 종료
 
@@ -90,7 +91,7 @@ run_id: <값>
 
 ## 6. 오케스트레이터 쓰기 범위
 
-- 쓸 수 있는 파일: 해당 실행 폴더의 `input.json`, `run.json`, `approvals.json`, `01-intake.a*.json`, `05-release.a*.json`
+- 쓸 수 있는 파일: 해당 실행 폴더의 `input.json`, `run.json`, `approvals.json`, `01-intake.a*.json`, `05-release.a*.json`, `closure.json`(close-run helper로만), `report.md`(report-run helper로만, 파생 문서)
 - `01-intake.a*.json`의 작성 주체는 오케스트레이터다. 사용자가 제공한 입력과 기계적 형식 검증 결과만 기록한다.
 - `05-release.a*.json`의 작성 주체는 오케스트레이터다. `gate-judge`와 `release-recorder`가 반환한 결과만 원문 그대로 기록한다.
 
@@ -114,6 +115,8 @@ run_id: <값>
 | 운영 URL 확인·사람 승인 | `node scripts/orchestrator/record-approval.mjs <run_dir> <approval_type> <APPROVE\|REJECT> --statement-file <path>` |
 | 판정 기록 | `node scripts/orchestrator/record-judgement.mjs <run_dir> [--judge-file <path>]` — 항상 재계산한 결과를 기록한다. gate-judge 출력을 `--judge-file`로 넘기면 정규화한 전체 결과가 재계산 결과와 완전히 같을 때만 기록하고, 다르면 `JUDGE_RESULT_MISMATCH`로 거부한다 |
 | 릴리스 기록 (release-recorder만) | `node scripts/write-release.mjs <run_dir>` |
+| 실행 취소·폐기 | `node scripts/orchestrator/close-run.mjs <run_dir> <cancel\|supersede> <basis> --statement-file <path> [--superseded-by <run_id>]` (8-5) |
+| 요약 보고서 | `node scripts/orchestrator/report-run.mjs <run_dir>` — `report.md`만 만든다. 공식 JSON과 상태를 바꾸지 않으며 판정 근거로 쓰지 않는다 (`docs/harness-artifacts.md` 2-3) |
 
 ### 8-1. 운영 URL 확인 — `OPERATING_URL_CONFIRMATION`
 
@@ -145,3 +148,16 @@ run_id: <값>
 - symlink·junction은 릴리스 기록으로 인정하지 않는다.
 - `post_record`는 현재 값과 일치하는 유효한 최신 `pre_record` 허가가 반드시 있어야 한다. 파일은 있으나 허가가 없거나 결합값이 다르면 `pre_record`로 되돌리지 않고 `FAIL`이다.
 - `record-judgement`는 judge 판정값을 바꾸지 않는다. `COMPLETE`는 `post_record`의 `complete_allowed: true`이고 stage 4 결과가 합성(검증용)이 아닐 때만 기록한다.
+
+### 8-5. 실행 취소·폐기 — `closure.json`
+
+| 사용자 문장 | 기록 | basis |
+|---|---|---|
+| `실행 취소 <run_id> [이유]` | `CANCELLED` (`cancel`) | `USER_CANCEL`. `--superseded-by`를 쓰지 않는다 |
+| `실행 폐기 <run_id> [이유]` | `SUPERSEDED` (`supersede`) | 실행 결과의 `standards_version`이 현재와 다르면 `STANDARDS_CHANGED`, 새 실행으로 대체했으면 `REPLACED_BY_RUN` + `--superseded-by <새 run_id>` |
+
+- run_id가 없거나 존재하지 않으면 기록하지 않고 다시 묻는다. 사용자 원문은 승인과 같은 `.harness-inbox/` 규칙으로 파일에 저장해 `--statement-file`로 넘기고, 기록이 성공하면 삭제한다. 실패하면 원문 파일을 남기고 경로를 보고한다.
+- `COMPLETE`이거나 이미 닫힌 실행은 닫을 수 없다(`RUN_COMPLETE_CANNOT_CLOSE`·`RUN_ALREADY_CLOSED`). 되돌릴 수 없다.
+- `--superseded-by`는 같은 app_slug 폴더에 존재하는 다른 열린 실행이어야 한다. `REPLACED_BY_RUN`에는 필수이고, 취소에는 허용하지 않는다.
+- helper는 `closure.json`만 새로 만들고 기존 실행 파일과 원문 파일을 바꾸거나 지우지 않는다. 실패하면 아무것도 쓰지 않는다.
+- 닫힌 뒤에는 `run-stage`·`write-release`·`record-judgement`·`record-approval`·`set-deployment`가 `RUN_CLOSED`로 거부하고, judge는 닫힌 상태와 `release_record_allowed: false`·`complete_allowed: false`를 보고한다.

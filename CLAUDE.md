@@ -10,7 +10,7 @@
 - 역할·트리거·hook 경계: `docs/harness-roles.md`
 - 오케스트레이터 행동·helper: `docs/harness-orchestrator.md`
 - 판정 SSOT: `standards/checks.json` / 사람이 읽는 기준: `standards/default-design.md`, `standards/default-gates.md`
-- 불변 원칙: `docs/story-service.md` (확인 안 한 것은 통과가 아니다 / WORK_PROJECT·IHIRI 자료를 가져오거나 섞지 않는다)
+- 불변 원칙: `docs/story-service.md` (확인 안 한 것은 통과가 아니다 / 비공개 업무·개인 프로젝트 자료를 가져오거나 섞지 않는다)
 
 ## 모드
 - **실행 모드:** 아래 트리거 문장으로 시작할 때만. 역할 경계(`docs/harness-roles.md` 1절) 안에서만 쓴다.
@@ -27,13 +27,17 @@
 | `모바일 검수 승인·거절 <run_id> [이유]` | HA-01 |
 | `아이콘 승인·거절 <run_id> [이유]` | HA-02 |
 | `최종 릴리스 승인·거절 <run_id> [이유]` | HA-03 |
+| `실행 취소 <run_id> [이유]` | `CANCELLED` (`close-run.mjs … cancel USER_CANCEL`) |
+| `실행 폐기 <run_id> [이유]` | `SUPERSEDED` (`close-run.mjs … supersede STANDARDS_CHANGED` 또는 `REPLACED_BY_RUN --superseded-by <새 run_id>`) |
 - run_id가 없거나 존재하지 않으면 기록하지 않고 다시 묻는다.
-- 승인·거절 원문은 사용자 메시지 전체를 아래 규칙대로 임시 파일에 저장해 `--statement-file`로 넘긴다. 요약·보완하지 않는다.
+- 승인·거절·취소·폐기 원문은 사용자 메시지 전체를 아래 규칙대로 임시 파일에 저장해 `--statement-file`로 넘긴다. 요약·보완하지 않는다.
+- `<run_id> 보고서` → `node scripts/orchestrator/report-run.mjs <run_dir>`로 `report.md`(파생 요약, 판정 근거 아님)를 만든다. 상태를 바꾸지 않는다.
+- 닫힌 실행(`closure.json`)은 재개·배포·승인·판정 기록을 하지 않고 닫힌 상태로 보고한다. `COMPLETE`·이미 닫힌 실행은 닫을 수 없고 되돌릴 수 없다 (`docs/harness-orchestrator.md` 8-5).
 
 ## `.harness-inbox/` 생명주기 (승인 원문 임시 파일)
 - 현재 run_id에 결합된 `.harness-inbox/<run_id>/` 내부에만 만든다.
 - symlink·junction·경로 이탈을 허용하지 않고, Git에 추가하지 않는다 (`.gitignore` 대상).
-- 승인·배포 기록이 성공하면 해당 임시 파일을 즉시 삭제한다.
+- 승인·배포·취소·폐기 기록이 성공하면 해당 임시 파일을 즉시 삭제한다.
 - 기록이 실패하면 파일을 숨기지 말고 남은 경로를 사용자에게 보고한다.
 - 실행 완료와 제출 전에는 `.harness-inbox/`가 비어 있어야 한다.
 - 임시 파일의 원문을 stdout·stderr·hook 로그·테스트 결과에 출력하지 않는다.
@@ -62,7 +66,8 @@
 - 사용자 메시지 없이 승인 만들기, 원문을 셸 명령 문자열에 넣기
 - `runs/`·`releases/`·`.git/`을 Write·Edit로 직접 쓰기, 저장소 밖 쓰기
 - push, force push, 파괴적 Git 명령, 배포, 공개 저장소 조작 (push는 사용자가 `! git push origin main`으로 직접 한다)
-- WORK_PROJECT·IHIRI 저장소·자산·문서·규칙 가져오기
+- 비공개 업무·개인 프로젝트의 저장소·자산·문서·규칙 가져오기
+- `config/*.local.json`을 Read·Write·Edit나 셸 명령으로 직접 열기·출력·수정·복사하기 (값 변경은 사용자가 Claude 밖에서 한다)
 
 ## 실행 모드 응답의 마지막 4줄 (run_id 생성 후)
 ```text

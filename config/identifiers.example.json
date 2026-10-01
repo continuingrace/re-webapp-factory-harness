@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "identifiers": [
+    { "id": "ID-EXAMPLE-BRAND", "match": "literal", "value": "example-private-brand", "note": "예시 값이다. 일반 브랜드 이름은 literal로 적는다. 실제 식별자는 identifiers.local.json에만 적는다." },
+    { "id": "ID-EXAMPLE-WORD", "match": "regex", "value": "\\bexampleword\\b", "note": "단어 경계가 필요한 경우에만 regex를 쓴다." }
+  ]
+}

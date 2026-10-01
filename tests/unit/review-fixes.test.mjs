@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { GOOD_CSS, REPO, fakeToken, goodApp, goodInput, makeApp, makeHarnessCopy, makeRun, runNode, withTemp, writeFiles } from './helpers.mjs';
+import { FIXTURE_IDS, GOOD_CSS, REPO, fakeToken, goodApp, goodInput, makeApp, makeHarnessCopy, makeRun, runNode, withTemp, writeFiles } from './helpers.mjs';
 import { getCheck, loadChecks } from '../../scripts/lib/checks.mjs';
 import { computeFingerprint } from '../../scripts/lib/fingerprint.mjs';
 import { requestOptions } from '../../scripts/lib/netguard.mjs';
@@ -15,7 +15,7 @@ import { evaluateStage4 } from '../../scripts/stages/stage4-evaluate.mjs';
 import { evaluateStage5 } from '../../scripts/stages/stage5-release.mjs';
 
 const { data } = loadChecks(REPO);
-const judge2 = (app, extra = {}) => judgeStatic({ root: REPO, checksData: data, input: goodInput(app, extra) });
+const judge2 = (app, extra = {}) => judgeStatic({ root: REPO, checksData: data, input: goodInput(app, extra), identifiers: FIXTURE_IDS });
 const item = (r, id) => r.items.find((i) => i.check_id === id);
 const withApp = (mutate, fn) => withTemp((t) => {
   const files = goodApp();
@@ -98,7 +98,7 @@ test('R4: 요청 옵션은 검증된 주소로 고정하고 TLS 이름 확인을
 
 test('R6: 바이너리 파일도 건너뛰지 않고 비밀·혼입 검사를 한다 (기준값은 checks.json)', () => {
   const token = fakeToken();
-  withApp((f) => { f['assets/blob.bin'] = Buffer.concat([Buffer.from([0, 1, 2, 0]), Buffer.from(`xx ${token} xx ihiri`, 'latin1')]); }, (app) => {
+  withApp((f) => { f['assets/blob.bin'] = Buffer.concat([Buffer.from([0, 1, 2, 0]), Buffer.from(`xx ${token} xx fixture-foreign-brand`, 'latin1')]); }, (app) => {
     const r = judge2(app);
     assert.equal(item(r, 'ST-03').failure_code, 'SECRET_DETECTED');
     assert.equal(item(r, 'ST-04').failure_code, 'FOREIGN_PROJECT_MIXED');
@@ -215,11 +215,11 @@ test('R11: 현재 fingerprint의 runner·judge 충돌은 RUNNER_JUDGE_CONFLICT, 
 
 test('R12: required_tools의 Node 최소 버전을 접수 단계에서 검사한다', () => withTemp((t) => {
   const app = makeApp(t);
-  const old = judgeIntake({ root: REPO, checksData: data, input: goodInput(app), nodeVersion: '18.19.0' });
+  const old = judgeIntake({ root: REPO, checksData: data, input: goodInput(app), identifiers: FIXTURE_IDS, nodeVersion: '18.19.0' });
   assert.equal(old.items[0].status, 'NEEDS_ATTENTION');
   assert.equal(old.items[0].failure_code, data.policies.missing_tool.failure_code);
   assert.equal(old.run_status, 'BLOCKED');
-  const cur = judgeIntake({ root: REPO, checksData: data, input: goodInput(app) });
+  const cur = judgeIntake({ root: REPO, checksData: data, input: goodInput(app), identifiers: FIXTURE_IDS });
   assert.equal(cur.items[0].status, 'PASS');
   assert.equal(cur.items[0].evidence.node.satisfied, true);
 }));

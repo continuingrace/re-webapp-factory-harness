@@ -29,30 +29,70 @@ danger          #C62828  [보완값]
 ### Typography
 
 ```text
-family     Pretendard Variable, Pretendard, system sans-serif
-display    32 / 700 / 1.30
-h1         28 / 700 / 1.30
-h2         24 / 700 / 1.35
-h3         20 / 700 / 1.35
-h4         18 / 700 / 1.35
-title      17 / 600 / 1.40
-body-lg    17 / 300 / 1.50
-body       15 / 400 / 1.50
-body-sm    13 / 400 / 1.50
-label      12 / 600 / 1.40
-caption    12 / 400 / 1.40
+family         Pretendard Variable, Pretendard, system sans-serif
+display        32 / 700 / 1.30
+title          28 / 700 / 1.30   화면 제목
+section        24 / 700 / 1.35   섹션 제목
+subsection     20 / 700 / 1.35   카드·하위 섹션 제목
+subsection-sm  18 / 700 / 1.35   작은 하위 제목
+emphasis       17 / 600 / 1.40   강조 행, 기능 제목
+body-lg        17 / 300 / 1.50
+body           15 / 400 / 1.50   기본 본문
+body-sm        13 / 400 / 1.50   보조 설명·상태 문구
+label          12 / 600 / 1.40   필드 라벨·배지·상태 레이블
+caption        12 / 400 / 1.40   메타 정보
 letter-spacing 0
 ```
+
+토큰 이름은 HTML 태그 이름(h1~h4)과 겹치지 않는 의미 역할명이다. 태그와 토큰은 독립적이다 (예: `<h2 data-type="subsection">`).
 
 ### Spacing & Shape
 
 ```text
 spacing    4, 8, 12, 16, 24, 32, 48, 64
-radius     0, 16, 24, 9999
+radius     0, 12, 16, 9999
 app icon   30% squircle
 border     1px
 shadow     none
 ```
+
+역할별 radius (2026-10-01 실기기 모바일 검수 거절과 390×844 화면 비교에 따른 조정, **[Factory 조정]**):
+
+| 토큰 | 값 | 대상 |
+|---|---|---|
+| `radius.none` | 0 | 화면 끝까지 닿는 영역 |
+| `radius.field` | 12px | input, textarea, select |
+| `radius.control` | 12px | 일반 버튼, `[role=button]` |
+| `radius.card` | 16px | 카드, 패널, 미리보기 |
+| `radius.pill` | 9999px | chip, tag, badge, toggle처럼 의도적으로 pill 형태인 요소만 |
+| `radius.app-icon` | 30% | 앱 아이콘 |
+
+### Design Contract
+
+앱이 HTML에 역할을 선언하면 하네스가 그 요소만 기계적으로 검사한다 (MB-08~10). `data-ui`·`data-type`을 하나도 선언하지 않은 앱만 근거와 함께 `NOT_APPLICABLE`이다.
+
+| 속성 | 값 | 검사 |
+|---|---|---|
+| `data-ui="field-group"` | 라벨·입력·보조 문구 묶음 | MB-08: 라벨→`data-ui="field"` 간격 ≤ 8px, field→다음 요소 간격 ≥ 12px (390×844) |
+| `data-ui="field"`·`"button"`·`"card"`·`"pill"` | 구성요소 역할 | MB-10: 계산된 radius가 역할 토큰과 일치. pill 형태 버튼은 `data-ui="pill"`이어야 함 (정사각형 원형 아이콘 버튼 제외) |
+| `data-type="<token>"` | Typography 토큰 이름 (display~caption) | MB-09: 계산된 글자 크기·굵기가 토큰과 일치 |
+
+계약을 일부만 선언하거나 잘못 선언하면 N/A로 빠지지 않는다:
+
+| 상황 | 결과 |
+|---|---|
+| `data-ui`는 있고 `data-type`이 하나도 없음 | MB-09 `FAIL` (`CONTRACT_INCOMPLETE`) |
+| `data-type`은 있고 `data-ui`가 하나도 없음 | MB-10 `FAIL` (`CONTRACT_INCOMPLETE`) |
+| `data-ui="field"`가 `field-group` 밖에 있음 | MB-08 `FAIL` (`FIELD_OUTSIDE_GROUP`) |
+| `field-group` 안에 `field`가 없음 | MB-08 `FAIL` (`FIELD_GROUP_WITHOUT_FIELD`) |
+| 정해지지 않은 `data-ui` 값 | MB-10 `FAIL` (`CONTRACT_INVALID`) |
+| 정해지지 않은 `data-type` 값 | MB-09 `FAIL` (`TYPE_TOKEN_UNKNOWN`) |
+| 선언한 요소가 화면에 하나도 보이지 않음 | `NEEDS_ATTENTION` (`CHECK_INCONCLUSIVE`, 측정 대상 0개) |
+
+- 근거: 2026-10-01 실기기 검수에서 입력창과 보조 문구 사이 8px이 답답하고, 글자 위계·묶음이 불명확하다는 거절 사유 **[Factory 조정]**.
+- 글자 크기(px)는 Typography 토큰의 크기만 쓴다 (DS-07). px가 아닌 단위·`var()`·`calc()`는 다른 DS 검사와 같이 판정할 수 없는 값으로 `NEEDS_ATTENTION`이다.
+- 기계 검사는 명백한 수치 문제만 막는다. 여백의 편안함, 의미상 묶음, 전체 균형, 위계가 충분히 읽히는지는 사람 검수(HA-01)가 판단한다.
+- 컨테이너별 세로 간격 종류 수는 비차단 진단으로만 기록한다 (판정·완료에 영향 없음).
 
 ## 2. Default Layout
 
@@ -69,11 +109,12 @@ shadow     none
 
 ## 3. Default Components
 
-- Primary button: ink fill, white label, full pill
-- Secondary button: white fill, 1px hairline, full pill
-- Tertiary button: soft canvas fill, full pill
-- Input: field fill, no resting border, 16px radius, 12px 16px padding
-- Card: white fill, 1px hairline-soft, 24px radius, 24px padding
+- Primary button: ink fill, white label, 12px radius (`radius.control`)
+- Secondary button: white fill, 1px hairline, 12px radius (`radius.control`)
+- Tertiary button: soft canvas fill, 12px radius (`radius.control`)
+- Input: field fill, no resting border, 12px radius (`radius.field`), 12px 16px padding
+- Card: white fill, 1px hairline-soft, 16px radius (`radius.card`), 24px padding
+- Chip·tag·badge·toggle: 9999px pill (`radius.pill`, `data-ui="pill"`). 그 밖의 요소는 pill을 쓰지 않는다.
 - QA row: soft canvas or white, 16px radius, status icon + label + evidence
 - Focus: visible 2px ink/accent ring
 - Sticky preview: desktop top 24px when the screen contains a preview **[보완값]**

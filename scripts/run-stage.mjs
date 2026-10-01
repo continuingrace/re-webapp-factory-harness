@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadChecks } from './lib/checks.mjs';
+import { loadIdentifiers } from './lib/identifiers.mjs';
 import { computeFingerprint } from './lib/fingerprint.mjs';
 import { resolveRunDir, readRunJson } from './lib/paths.mjs';
 import { listAttempts, readStageResult, writeNoClobber } from './lib/result.mjs';
@@ -12,6 +13,7 @@ import { evaluateStage3 } from './stages/stage3-evaluate.mjs';
 import { evaluateStage4 } from './stages/stage4-evaluate.mjs';
 import { urlConfirmation } from './lib/approvals.mjs';
 import { currentBinding, currentDeployment, deploymentValid, effectiveInput, readRunState } from './lib/run-state.mjs';
+import { readClosure } from './lib/closure.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -34,8 +36,10 @@ function latestValid(dir, prefix) {
   return null;
 }
 
+// 식별자 설정은 하네스 루트의 고정 경로에서만 읽는다. 없거나 잘못되면 ST-04만 NOT_RUN이고 실행은 BLOCKED다.
 async function runStage2({ data, input }) {
-  return judgeStatic({ root: ROOT, checksData: data, input });
+  const identifiers = loadIdentifiers(ROOT, data.policies.private_identifiers);
+  return judgeStatic({ root: ROOT, checksData: data, input, identifiers });
 }
 
 // stage 3은 최신 stage 2 결과가 같은 fingerprint·standards_version에서 통과했을 때만 실행한다.
@@ -106,6 +110,10 @@ async function main() {
   if (!stage) return out({ error_code: 'STAGE_UNSUPPORTED' }, 2);
   const rd = resolveRunDir(ROOT, runDirArg);
   if (!rd.ok) return out({ error_code: rd.code }, 1);
+  // 닫힌 실행이나 닫기 기록이 깨진 실행은 어떤 단계도 실행하지 않는다.
+  const closure = readClosure(rd.dir);
+  if (closure.state === 'CLOSED') return out({ error_code: 'RUN_CLOSED', run_status: closure.value.status }, 1);
+  if (closure.state === 'INVALID') return out({ error_code: closure.code }, 1);
   const input = readRunJson(rd.dir, 'input.json');
   if (!input.ok) return out({ error_code: input.code }, 1);
   const { data, errors } = loadChecks(ROOT);

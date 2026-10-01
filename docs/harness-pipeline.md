@@ -14,13 +14,14 @@
 | # | 단계 | 하는 일 | 정상 종료 시 실행 상태 |
 |---|---|---|---|
 | 1 | 접수 | 필수·조건부 입력, 플래그 값, `target_version` 형식(`x.y.z`), `app_path` 존재 확인. 누적 실행 기록 생성 | `IN_PROGRESS` |
-| 2 | 정적 검사 | Gate 1 Structure, Gate 2 Design 중 자동 판정 항목, 버전 위치 일치, 비밀정보, WORK_PROJECT·IHIRI 혼입 검사 | `IN_PROGRESS` |
+| 2 | 정적 검사 | Gate 1 Structure, Gate 2 Design 중 자동 판정 항목, 버전 위치 일치, 비밀정보, 비공개 프로젝트 식별자 혼입 검사 | `IN_PROGRESS` |
 | 3 | 브라우저 검사 | 로컬 URL에서 Gate 3 Responsive & Mobile, Gate 4 Functional & Accessibility | `AWAITING_DEPLOYMENT` |
 | 4 | 운영 검사 | `postdeploy` 재개. Gate 5 Deployment, 운영 URL 인정 조건 5개, 운영 자산 요청 | `AWAITING_APPROVAL` |
 | 5 | 사람 승인·릴리스 기록 | 실제 모바일 기기 검수 → 홈 아이콘 시각 승인(`pwa_installable: yes`) → 최종 릴리스 승인 → 모든 완료 조건 재판정 → 릴리스 기록 | `COMPLETE` |
 
 - 사용자 수정·결정 또는 외부 조치 없이는 진행할 수 없으면 실행 상태는 `BLOCKED`다.
 - 검사 실패는 **검사 항목 상태 `FAIL`**, **실행 전체 상태 `BLOCKED`** 로 구분한다.
+- 사용자는 어느 단계에서든 `COMPLETE`가 아닌 실행을 공식적으로 닫을 수 있다: 취소는 `CANCELLED`, 이전 기준 실험·새 실행으로 대체는 `SUPERSEDED`. 닫힌 실행은 어떤 단계도 다시 실행하지 않으며 되돌릴 수 없다. 기존 결과는 그대로 보존하고 새 검수는 새 실행으로 한다 (`docs/harness-orchestrator.md` 8-5).
 
 ## 2. 단계 입출력
 

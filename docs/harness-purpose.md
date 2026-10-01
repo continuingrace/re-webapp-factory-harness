@@ -70,6 +70,10 @@
 - Gate 정의: `standards/default-gates.md`
 - 디자인 값: 앱별 `design.md`가 있으면 승인된 override로 적용하고, 없으면 `standards/default-design.md`를 사용한다.
 - 판정 기준 2개: 7절
+- 비공개 식별자: 하네스 루트의 `config/identifiers.local.json`(Git 추적 안 함, 형식은 `config/identifiers.schema.json`). 경로는 `checks.json` `policies.private_identifiers`로 고정하며 대상 앱이나 명령 인자로 바꿀 수 없다.
+  - 파일이 없거나 잘못되면 IN-01은 `NEEDS_ATTENTION`, 실행은 `BLOCKED`, ST-04는 `NOT_RUN`이다. ST-04를 `PASS`로 추정하지 않는다.
+  - 식별자 id는 의미 없는 이름(`ID-PRIVATE-n`)을 쓴다. 결과·evidence에는 id·가린 경로·건수만 남는다.
+  - 값 변경은 사용자가 Claude 밖에서 직접 한다.
 
 ## 4. 상태값
 
@@ -96,6 +100,10 @@
 | `AWAITING_DEPLOYMENT` | 사용자 배포 대기 |
 | `COMPLETE` | 모든 완료 조건 충족 |
 | `BLOCKED` | 사용자 결정이나 외부 조건 없이는 진행 불가 |
+| `CANCELLED` | 취소됨 — 사용자가 진행 중인 실행을 공식적으로 중단함 (종료 상태) |
+| `SUPERSEDED` | 폐기(대체됨) — 이전 기준의 실험이거나 새 실행으로 대체됨 (종료 상태) |
+
+`CANCELLED`·`SUPERSEDED`는 사용자 문장으로만 기록하며 되돌릴 수 없다. `COMPLETE` 실행은 닫을 수 없다. 기존 실행 파일은 바꾸지 않고 닫기 기록(`closure.json`)만 추가한다 (`docs/harness-artifacts.md` 2-2, `docs/harness-orchestrator.md` 8-5).
 
 ### 4-3. 후속 수정 후보 (R5)
 
@@ -157,7 +165,7 @@
 ## 7. 판정 기준 (`docs/story-service.md`의 최상위 불변 원칙)
 
 1. 실제 확인하지 않은 기능·링크·배포·QA 상태를 통과나 완료로 기록하지 않는다.
-2. WORK_PROJECT와 IHIRI의 저장소·자산·문서·규칙을 자동으로 가져오거나 혼합하지 않는다.
+2. 업무·개인 프로젝트의 저장소·자산·문서·규칙을 자동으로 가져오거나 혼합하지 않는다.
 
 두 원칙은 R5의 기계 판정과 사람 승인 조건에 반드시 연결한다.
 

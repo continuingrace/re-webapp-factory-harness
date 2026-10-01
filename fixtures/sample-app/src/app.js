@@ -27,5 +27,16 @@ clear.addEventListener('click', () => {
 });
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  // 이미 이전 service worker가 화면을 제어하던 경우에만, 새 버전이 넘겨받으면 한 번 새로고침한다.
+  // (첫 설치의 clients.claim()도 controllerchange를 일으키므로 그때는 새로고침하지 않는다.)
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+    .then((registration) => registration.update())
+    .catch(() => {});
 }

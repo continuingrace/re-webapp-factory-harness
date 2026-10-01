@@ -1,5 +1,6 @@
 // Stage 1 접수 판정 (IN-01). 결과는 반환·stdout으로만 내며 파일을 쓰지 않는다.
 // 01-intake 파일은 오케스트레이터가 작성한다 (docs/harness-orchestrator.md 6절).
+// 식별자 설정은 호출자가 주입한다. 없거나 잘못되면 IN-01은 NEEDS_ATTENTION, 실행은 BLOCKED, ST-04는 NOT_RUN이다.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -7,6 +8,9 @@ import { getCheck, appliesWhen, loadChecks } from '../lib/checks.mjs';
 import { makeItem, policyCodes } from '../lib/result.mjs';
 import { canonicalAppPath, deriveAppSlug, findSlugCollision } from '../lib/paths.mjs';
 import { computeFingerprint } from '../lib/fingerprint.mjs';
+import { identifiersSummary, loadIdentifiers } from '../lib/identifiers.mjs';
+
+const IDENTIFIERS_NEXT = '식별자 설정(config/identifiers.local.json)을 사용자가 직접 확인한 뒤 1단계부터 재실행';
 
 const blank = (v) => v === undefined || v === null || String(v).trim() === '';
 
@@ -18,7 +22,7 @@ export function nodeRequirement(checksData, version) {
   return { required_min_major: min, actual: String(version), satisfied: min === null || (Number.isInteger(major) && major >= min) };
 }
 
-export function judgeIntake({ root, checksData, input, nodeVersion = process.versions.node }) {
+export function judgeIntake({ root, checksData, input, identifiers, nodeVersion = process.versions.node }) {
   const check = getCheck(checksData, 'IN-01');
   const rule = check.rule;
   const violations = [];
@@ -83,26 +87,37 @@ export function judgeIntake({ root, checksData, input, nodeVersion = process.ver
   }
   const meta = { fingerprint, standards_version: checksData.standards_version, policy_codes: policyCodes(checksData) };
   const node = nodeRequirement(checksData, nodeVersion);
+  const idConfig = identifiersSummary(identifiers);
+  const idOk = idConfig.status === 'LOADED';
   const ok = violations.length === 0;
   let item;
   if (!ok) {
-    item = makeItem(check, { status: 'FAIL', evidence: { checked_fields: checked, violations, node }, failure_code: failure, next_action: '입력 수정 후 1단계' }, meta);
+    item = makeItem(check, { status: 'FAIL', evidence: { checked_fields: checked, violations, node, identifiers_config: idConfig }, failure_code: failure, next_action: '입력 수정 후 1단계' }, meta);
   } else if (!node.satisfied) {
     const missing = checksData.policies.missing_tool;
-    item = makeItem(check, { status: missing.status, evidence: { checked_fields: checked, violations: [], node }, failure_code: missing.failure_code, next_action: 'Node 버전 확인 필요' }, meta);
+    item = makeItem(check, { status: missing.status, evidence: { checked_fields: checked, violations: [], node, identifiers_config: idConfig }, failure_code: missing.failure_code, next_action: 'Node 버전 확인 필요' }, meta);
+  } else if (!idOk) {
+    item = makeItem(check, { status: 'NEEDS_ATTENTION', evidence: { checked_fields: checked, violations: [], node, identifiers_config: idConfig }, failure_code: idConfig.failure_code, next_action: IDENTIFIERS_NEXT }, meta);
   } else {
-    item = makeItem(check, { status: 'PASS', evidence: { checked_fields: checked, violations: [], node } }, meta);
+    item = makeItem(check, { status: 'PASS', evidence: { checked_fields: checked, violations: [], node, identifiers_config: idConfig } }, meta);
   }
+  // 설정을 불러오지 못하면 ST-04는 실행할 수 없다. PASS·FAIL로 추정하지 않고 NOT_RUN으로만 남긴다.
+  const blockedChecks = idOk ? [] : [makeItem(getCheck(checksData, 'ST-04'), {
+    status: 'NOT_RUN',
+    evidence: { reason: 'IDENTIFIERS_CONFIG_UNAVAILABLE', failure_code: idConfig.failure_code },
+    next_action: IDENTIFIERS_NEXT,
+  }, meta)];
 
   return {
     stage: 1,
-    run_status: ok && node.satisfied ? 'IN_PROGRESS' : 'BLOCKED',
+    run_status: ok && node.satisfied && idOk ? 'IN_PROGRESS' : 'BLOCKED',
     app_slug: slug ? slug.slug : null,
     app_slug_source: slug ? slug.source : null,
     app_path_canonical: canonical,
     fingerprint,
     standards_version: checksData.standards_version,
     items: [item],
+    blocked_checks: blockedChecks,
   };
 }
 
@@ -113,7 +128,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const { data, errors } = loadChecks(root);
     if (errors.length) throw Object.assign(new Error('CHECKS_INVALID'), { code: 'CHECKS_INVALID' });
     const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-    process.stdout.write(`${JSON.stringify(judgeIntake({ root, checksData: data, input }))}\n`);
+    const identifiers = loadIdentifiers(root, data.policies.private_identifiers);
+    process.stdout.write(`${JSON.stringify(judgeIntake({ root, checksData: data, input, identifiers }))}\n`);
   } catch (e) {
     process.stdout.write(`${JSON.stringify({ stage: 1, run_status: 'BLOCKED', error_code: e.code || 'INTAKE_ERROR' })}\n`);
     process.exitCode = 1;

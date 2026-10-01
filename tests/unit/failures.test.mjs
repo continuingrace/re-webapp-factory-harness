@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { REPO, makeHarnessCopy, makeRun, mkTemp, rm, withTemp } from './helpers.mjs';
+import { FIXTURE_IDS, REPO, makeHarnessCopy, makeRun, mkTemp, publicCandidateFiles, rm, withTemp } from './helpers.mjs';
 import { loadChecks } from '../../scripts/lib/checks.mjs';
 import { computeFingerprint } from '../../scripts/lib/fingerprint.mjs';
 import { judgeStatic } from '../../scripts/stages/stage2-static.mjs';
@@ -44,7 +44,7 @@ function appCopy(tmp, c) {
   return app;
 }
 
-const input = (app) => ({ app_path: app, target_version: '1.0.0', change_summary: '실패 사례 검증', release_phase: 'predeploy', flags: FLAGS, overrides: [] });
+const input = (app) => ({ app_path: app, target_version: '1.0.1', change_summary: '실패 사례 검증', release_phase: 'predeploy', flags: FLAGS, overrides: [] });
 const failures = (items) => items.filter((i) => i.status === 'FAIL' || i.status === 'NEEDS_ATTENTION').map((i) => [i.check_id, i.failure_code]).sort();
 const expectedOf = (id) => [...EXPECTED[id].expected_failures].sort();
 
@@ -58,13 +58,13 @@ function checkPipeline(t, id, items) {
 for (const id of ['F1', 'F3', 'F4', 'F6']) {
   test(`${id}: ${caseOf(id).verification_type} stage 2`, (t) => withTemp((tmp) => {
     const app = appCopy(tmp, caseOf(id));
-    checkPipeline(t, id, judgeStatic({ root: REPO, checksData: data, input: input(app) }).items);
+    checkPipeline(t, id, judgeStatic({ root: REPO, checksData: data, input: input(app), identifiers: FIXTURE_IDS }).items);
   }));
 }
 
 test('F5: pipeline stage 2·3 (설치된 Chrome)', async (t) => withTemp(async (tmp) => {
   const app = appCopy(tmp, caseOf('F5'));
-  const s2 = judgeStatic({ root: REPO, checksData: data, input: input(app) });
+  const s2 = judgeStatic({ root: REPO, checksData: data, input: input(app), identifiers: FIXTURE_IDS });
   assert.deepEqual(failures(s2.items), []);
   const { measureStage3 } = await import('../../scripts/stages/stage3-browser.mjs');
   const m = await measureStage3({ checksData: data, input: input(app) });
@@ -79,7 +79,7 @@ test('F7: 비밀 문자열은 SECRET_DETECTED이고 stdout·stderr·결과 파�
     const c = caseOf('F7');
     const token = buildToken(c.mutations[0]);
     const app = appCopy(tmp, c);
-    const direct = judgeStatic({ root: REPO, checksData: data, input: input(app) });
+    const direct = judgeStatic({ root: REPO, checksData: data, input: input(app), identifiers: FIXTURE_IDS });
     checkPipeline(t, 'F7', direct.items);
     const root = makeHarnessCopy(tmp);
     const runDir = makeRun(root, 'sample-app', input(app));
@@ -87,8 +87,14 @@ test('F7: 비밀 문자열은 SECRET_DETECTED이고 stdout·stderr·결과 파�
     const written = fs.readFileSync(path.join(runDir, '02-static.a1.json'), 'utf8');
     const occurrences = [r.stdout, r.stderr, written, JSON.stringify(direct)].reduce((n, s) => n + s.split(token).length - 1, 0);
     assert.equal(occurrences, EXPECTED.F7.complete_token_occurrences);
-    const repoFiles = spawnSync('git', ['-C', REPO, 'grep', '-l', '-E', 'ghp_[A-Za-z0-9]{36}'], { encoding: 'utf8' });
-    assert.equal(repoFiles.stdout.trim(), '', '저장소 추적 파일에 완성 토큰 형식 0건');
+    // 공개 후보 파일 전체(allowlist 대상 일반 파일과 있으면 PUBLIC_RELEASES.md)를 Git 없이 직접 검사한다.
+    const candidates = publicCandidateFiles(REPO);
+    assert.ok(candidates.length > 50 && candidates.includes('README.md') && candidates.includes('tests/unit/failures.test.mjs'));
+    const tokenFiles = candidates.filter((rel) => {
+      const buf = fs.readFileSync(path.join(REPO, ...rel.split('/')));
+      return /ghp_[A-Za-z0-9]{36}/.test(buf.includes(0) ? buf.toString('latin1') : buf.toString('utf8'));
+    });
+    assert.deepEqual(tokenFiles, [], '공개 후보 파일에 완성 토큰 형식 0건');
   } finally {
     rm(tmp);
   }

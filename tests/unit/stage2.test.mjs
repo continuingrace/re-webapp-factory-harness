@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { GOOD_CSS, REPO, fakeToken, goodApp, goodInput, makeApp, makeHarnessCopy, withTemp } from './helpers.mjs';
+import { FIXTURE_IDS, GOOD_CSS, REPO, fakeToken, goodApp, goodInput, makeApp, makeHarnessCopy, withTemp } from './helpers.mjs';
 import { loadChecks } from '../../scripts/lib/checks.mjs';
 import { judgeStatic } from '../../scripts/stages/stage2-static.mjs';
 
 const { data } = loadChecks(REPO);
-const judge = (app, extra = {}, root = REPO, checksData = data) => judgeStatic({ root, checksData, input: goodInput(app, extra) });
+const judge = (app, extra = {}, root = REPO, checksData = data) => judgeStatic({ root, checksData, input: goodInput(app, extra), identifiers: FIXTURE_IDS });
 const item = (r, id) => r.items.find((i) => i.check_id === id);
 const withApp = (mutate, fn) => withTemp((t) => {
   const files = goodApp();
@@ -68,19 +68,21 @@ test('ST-03: 실제 .env는 실패, 깨끗한 .env.example은 허용', () => {
   withApp((f) => { f['.env.example'] = 'A=\n'; }, (app) => assert.equal(item(judge(app), 'ST-03').status, 'PASS'));
 });
 
-test('ST-04: WORK_PROJECT·IHIRI 식별자는 내용과 경로 모두 FAIL', () => {
-  withApp((f) => { f['README.md'] += '\nIHIRI 자료\n'; }, (app) => {
+test('ST-04: fixture 식별자는 내용과 경로 모두 FAIL이고 경로의 식별자 부분은 가린다', () => {
+  withApp((f) => { f['README.md'] += '\nFIXTURE-FOREIGN-BRAND 자료\n'; }, (app) => {
     const i = item(judge(app), 'ST-04');
     assert.equal(i.failure_code, 'FOREIGN_PROJECT_MIXED');
-    assert.deepEqual(i.evidence.hits, [{ path: 'README.md', id: 'ID-IHIRI', target: 'content', count: 1 }]);
+    assert.deepEqual(i.evidence.hits, [{ path: 'README.md', id: 'ID-FIXTURE-1', target: 'content', count: 1 }]);
   });
-  withApp((f) => { f['work_project/a.txt'] = 'x'; }, (app) => {
-    assert.ok(item(judge(app), 'ST-04').evidence.hits.some((h) => h.target === 'path' && h.id === 'ID-WORK-PROJECT'));
+  withApp((f) => { f['fxword/a.txt'] = 'x'; }, (app) => {
+    const i = item(judge(app), 'ST-04');
+    assert.deepEqual(i.evidence.hits, [{ path: '[ID-FIXTURE-2]/a.txt', id: 'ID-FIXTURE-2', target: 'path' }]);
+    assert.equal(JSON.stringify(i).includes('fxword'), false);
   });
 });
 
 test('ST-04: 제외 폴더(node_modules) 안의 식별자는 검사하지 않는다', () => withApp((f) => {
-  f['node_modules/pkg/readme.md'] = 'ihiri';
+  f['node_modules/pkg/readme.md'] = 'fixture-foreign-brand';
 }, (app) => assert.equal(item(judge(app), 'ST-04').status, 'PASS')));
 
 test('ST-05: README 버전만 다르면 VERSION_MISMATCH', () => withApp((f) => {

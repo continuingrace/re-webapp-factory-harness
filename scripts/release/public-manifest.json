@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "description": "public export allowlist. include에 맞고 exclude에 맞지 않는 커밋 추적 파일만 내보낸다. 'dir/'는 그 폴더 아래 전체, '*'는 경로 한 단계 안의 임의 문자열, 그 밖은 정확한 경로다. exclude가 우선하며 대소문자를 무시한다.",
+  "include": [
+    ".claude/",
+    ".gitignore",
+    "CLAUDE.md",
+    "README.md",
+    "config/*.schema.json",
+    "config/*.example.json",
+    "docs/",
+    "fixtures/",
+    "package.json",
+    "package-lock.json",
+    "scripts/",
+    "standards/",
+    "tests/"
+  ],
+  "exclude": [
+    "ops/",
+    "docs/harness-operations.md",
+    "config/*.local.json",
+    "runs/",
+    "releases/",
+    ".harness-inbox/",
+    ".export/",
+    "node_modules/",
+    ".git/"
+  ],
+  "generated": ["PUBLIC_RELEASES.md"]
+}

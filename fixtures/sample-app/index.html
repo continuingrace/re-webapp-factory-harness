@@ -12,21 +12,25 @@
 </head>
 <body>
 <header class="site-header">
-  <h1>RE Sample App</h1>
-  <p class="version">v1.0.0</p>
+  <h1 data-type="title">RE Sample App</h1>
+  <p class="version" data-type="caption">v1.0.1</p>
 </header>
 <main class="layout">
-  <aside class="preview" data-sticky-preview aria-labelledby="preview-title">
-    <h2 id="preview-title">미리보기</h2>
-    <p id="preview" class="preview-text">아직 입력한 메모가 없습니다.</p>
+  <aside class="preview" data-sticky-preview data-ui="card" aria-labelledby="preview-title">
+    <h2 id="preview-title" data-type="subsection">미리보기</h2>
+    <p id="preview" class="preview-text" data-type="body">아직 입력한 메모가 없습니다.</p>
   </aside>
   <section class="editor" aria-labelledby="editor-title">
-    <h2 id="editor-title">메모</h2>
-    <label for="note">메모 입력</label>
-    <textarea id="note" rows="6"></textarea>
-    <p id="status" role="status">자동 저장 준비됨</p>
-    <button type="button" id="clear">지우기</button>
-    <div class="notes">
+    <h2 id="editor-title" data-type="subsection">메모</h2>
+    <div class="field-group" data-ui="field-group">
+      <label for="note" data-type="label">메모 입력</label>
+      <textarea id="note" rows="6" data-ui="field"></textarea>
+      <div class="field-meta">
+        <p id="status" class="status" role="status" data-type="body-sm">자동 저장 준비됨</p>
+        <button type="button" id="clear" data-ui="button">지우기</button>
+      </div>
+    </div>
+    <div class="notes" data-type="body">
       <p>검증용 본문 1. 이 문단은 스크롤 길이를 확보해 상단 고정 미리보기가 실제로 고정되는지 확인하기 위해 들어 있습니다.</p>
       <p>검증용 본문 2. 이 문단은 스크롤 길이를 확보해 상단 고정 미리보기가 실제로 고정되는지 확인하기 위해 들어 있습니다.</p>
       <p>검증용 본문 3. 이 문단은 스크롤 길이를 확보해 상단 고정 미리보기가 실제로 고정되는지 확인하기 위해 들어 있습니다.</p>

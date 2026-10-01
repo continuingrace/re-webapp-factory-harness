@@ -274,7 +274,102 @@ async function measureAxe(ctx, check) {
   });
 }
 
+// ---------- design contract (MB-08~10) ----------
+// 앱이 data-ui·data-type으로 선언한 요소만 측정한다. 판정은 stage3-evaluate.mjs가 원시 값으로 한다.
+// 페이지에 스크립트를 주입하지 않는다(CSP 영향 없음). 공용 도우미는 각 evaluate 안에서 정의한다.
+async function contractPage(ctx, viewport, fn, arg) {
+  return withContext(ctx.browser, { viewport: { width: viewport[0], height: viewport[1] } }, ctx.track, async (page) => {
+    await page.goto(ctx.origin, { waitUntil: 'load' });
+    return page.evaluate(fn, arg);
+  });
+}
+
+// MB-08: 필드 그룹 자식의 위치와, 비차단 진단용 컨테이너별 세로 간격 종류.
+async function measureFieldGroups(ctx, check) {
+  const rule = check.rule;
+  const raw = await contractPage(ctx, rule.viewport, (r) => {
+    const visible = (el) => { const b = el.getBoundingClientRect(); const cs = getComputedStyle(el); return b.width > 0 && b.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
+    const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.classList.length ? '.' + el.classList[0] : '');
+    const groups = [...document.querySelectorAll(r.group_selector)].filter(visible).map((g) => ({
+      group: name(g),
+      children: [...g.children].filter(visible).map((k) => {
+        const b = k.getBoundingClientRect();
+        const role = k.matches(r.field_selector) ? 'field' : (k.matches(r.label_selector) ? 'label' : 'other');
+        return { element: name(k), role, top: b.top, bottom: b.bottom };
+      }),
+    }));
+    // 진단(판정 아님): main 안에서 보이는 흐름 자식이 3개 이상인 컨테이너의 연속 세로 간격
+    const root = document.querySelector('main') || document.body;
+    const containers = [root, ...root.querySelectorAll('*')].filter(visible);
+    const spacing = [];
+    for (const c of containers) {
+      const kids = [...c.children].filter((k) => visible(k) && !['absolute', 'fixed'].includes(getComputedStyle(k).position));
+      if (kids.length < 3) continue;
+      const gaps = [];
+      for (let i = 1; i < kids.length; i += 1) {
+        const prev = kids[i - 1].getBoundingClientRect();
+        const next = kids[i].getBoundingClientRect();
+        if (next.top >= prev.bottom - 1) gaps.push(Math.round(next.top - prev.bottom));
+      }
+      if (gaps.length >= 2) spacing.push({ container: name(c), gaps, distinct: new Set(gaps).size });
+      if (spacing.length >= 50) break;
+    }
+    // 부분 계약 확인: field-group 밖에 선언된 field
+    const outside = [...document.querySelectorAll(r.field_selector)].filter((f) => visible(f) && !f.closest(r.group_selector)).map(name);
+    const declared = { ui: document.querySelectorAll('[data-ui]').length, type: document.querySelectorAll('[data-type]').length };
+    const declaredGroups = document.querySelectorAll(r.group_selector).length;
+    return { contract_present: declared.ui + declared.type > 0, declared, declared_groups: declaredGroups, groups, fields_outside_group: outside, spacing_variety: spacing };
+  }, rule);
+  return { viewport: rule.viewport, ...raw };
+}
+
+// MB-09: data-type 요소의 계산된 글자 크기·굵기.
+async function measureTypeTokens(ctx, check) {
+  const rule = check.rule;
+  const raw = await contractPage(ctx, rule.viewport, (r) => {
+    const visible = (el) => { const b = el.getBoundingClientRect(); const cs = getComputedStyle(el); return b.width > 0 && b.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
+    const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.classList.length ? '.' + el.classList[0] : '');
+    const declared = { ui: document.querySelectorAll('[data-ui]').length, type: document.querySelectorAll('[data-type]').length };
+    return {
+      contract_present: declared.ui + declared.type > 0,
+      declared,
+      elements: [...document.querySelectorAll(r.selector)].filter(visible).map((el) => {
+        const cs = getComputedStyle(el);
+        return { element: name(el), token: el.getAttribute(r.attribute), font_size_px: parseFloat(cs.fontSize), font_weight: Number(cs.fontWeight) };
+      }),
+    };
+  }, rule);
+  return { viewport: rule.viewport, ...raw };
+}
+
+// MB-10: data-ui 요소의 계산된 모서리 radius와, pill 형태일 수 있는 버튼 후보.
+async function measureRadiusRoles(ctx, check) {
+  const rule = check.rule;
+  const raw = await contractPage(ctx, rule.viewport, (r) => {
+    const visible = (el) => { const b = el.getBoundingClientRect(); const cs = getComputedStyle(el); return b.width > 0 && b.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
+    const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.classList.length ? '.' + el.classList[0] : '');
+    const corners = (el) => {
+      const cs = getComputedStyle(el);
+      return [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius];
+    };
+    const box = (el) => { const b = el.getBoundingClientRect(); return { width: b.width, height: b.height }; };
+    const declared = { ui: document.querySelectorAll('[data-ui]').length, type: document.querySelectorAll('[data-type]').length };
+    return {
+      contract_present: declared.ui + declared.type > 0,
+      declared,
+      elements: [...document.querySelectorAll(r.selector)].filter(visible)
+        .map((el) => ({ element: name(el), role: el.getAttribute(r.attribute), radii: corners(el), ...box(el) })),
+      pill_candidates: [...document.querySelectorAll(r.pill_candidates)].filter(visible)
+        .map((el) => ({ element: name(el), role: el.getAttribute(r.attribute), radii: corners(el), ...box(el) })),
+    };
+  }, rule);
+  return { viewport: rule.viewport, ...raw };
+}
+
 const MEASURERS = {
+  browser_field_group_spacing: measureFieldGroups,
+  browser_type_tokens: measureTypeTokens,
+  browser_radius_roles: measureRadiusRoles,
   browser_no_overflow: measureOverflow,
   browser_min_target_size: measureTargets,
   browser_sticky: measureSticky,

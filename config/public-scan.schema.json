@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "config/public-scan.schema.json",
+  "title": "public export 차단 목록",
+  "description": "public export에 나오면 안 되는 개인 이메일·비공개 경로·비공개 저장소 이름 등. 실제 값은 config/public-scan.local.json(.gitignore)에만 둔다. 없거나 잘못되면 export를 중단한다. 적용은 항상 대소문자를 무시한다.",
+  "$comment": "스키마로 표현할 수 없는 규칙(공백만 있는 value, id 중복, 컴파일되지 않는 regex, 빈 문자열과 일치하는 regex)은 scan-public(단계 3)이 거부한다. scripts/lib/config-schema.mjs가 지원하는 키워드만 쓴다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "forbidden"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "forbidden": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "match", "value"],
+        "properties": {
+          "id": { "type": "string", "maxLength": 100, "pattern": "^PS-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+          "kind": { "enum": ["email", "path", "repository", "other"] },
+          "match": { "enum": ["literal", "regex"] },
+          "value": { "type": "string", "minLength": 1, "maxLength": 2048 },
+          "note": { "type": "string", "maxLength": 500 }
+        }
+      }
+    }
+  }
+}

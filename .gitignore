@@ -1,3 +1,7 @@
 runs/
 node_modules/
 .harness-inbox/
+# 비공개 로컬 설정: 실제 값은 커밋하지 않는다 (schema·example만 추적)
+config/*.local.json
+# public export staging
+.export/

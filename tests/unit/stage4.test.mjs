@@ -13,7 +13,7 @@ const { data } = loadChecks(REPO);
 const SAMPLE = path.join(REPO, 'fixtures', 'sample-app');
 const FLAGS = { sticky_preview: 'yes', effect_font: 'no', local_state: 'yes', pwa_installable: 'yes' };
 const BASE = 'https://sample.example/';
-const input = (url = BASE) => ({ app_path: SAMPLE, target_version: '1.0.0', release_phase: 'postdeploy', operating_url: url, deployment_id: 'd1', flags: FLAGS });
+const input = (url = BASE) => ({ app_path: SAMPLE, target_version: '1.0.1', release_phase: 'postdeploy', operating_url: url, deployment_id: 'd1', flags: FLAGS });
 const APPROVED = { status: 'APPROVE', indexes: [0] };
 
 function sampleMocks({ override = {} } = {}) {
@@ -76,7 +76,7 @@ test('운영 자산 404는 ASSET_NOT_200, 운영 화면 버전이 다르면 DEPL
   const m1 = sampleMocks({ override: { 'icons/icon-512.png': 404 } });
   const a = await measureStage4({ checksData: data, input: input(), confirmation: APPROVED, resolver: m1.resolver, transport: m1.transport });
   assert.equal(item(evaluateStage4(data, input(), a.raws, APPROVED, { fingerprint: 'fp' }), 'PD-02').failure_code, 'ASSET_NOT_200');
-  const html = fs.readFileSync(path.join(SAMPLE, 'index.html'), 'utf8').replace('v1.0.0', 'v0.9.0');
+  const html = fs.readFileSync(path.join(SAMPLE, 'index.html'), 'utf8').replace('v1.0.1', 'v0.9.0');
   const m2 = sampleMocks({ override: { 'index.html': html } });
   const b = await measureStage4({ checksData: data, input: input(), confirmation: APPROVED, resolver: m2.resolver, transport: m2.transport });
   assert.equal(item(evaluateStage4(data, input(), b.raws, APPROVED, { fingerprint: 'fp' }), 'PD-03').failure_code, 'DEPLOYED_VERSION_MISMATCH');

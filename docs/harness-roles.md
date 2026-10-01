@@ -96,6 +96,8 @@
 | `아이콘 거절 <run_id> <이유>` | HA-02 `REJECT` |
 | `최종 릴리스 승인 <run_id>` | HA-03 `APPROVE` |
 | `최종 릴리스 거절 <run_id> <이유>` | HA-03 `REJECT` |
+| `실행 취소 <run_id> [이유]` | `CANCELLED` 닫기 기록 (`docs/harness-orchestrator.md` 8-5) |
+| `실행 폐기 <run_id> [이유]` | `SUPERSEDED` 닫기 기록 (이전 기준 실험 또는 새 실행으로 대체) |
 
 ### 규칙
 
@@ -103,6 +105,7 @@
 - 승인·거절의 `statement`에는 사용자 메시지 **전체 원문**을 그대로 저장한다.
 - 에이전트는 승인 문장을 생성·요약·보완하지 않는다.
 - 현재 fingerprint, `target_version`, `operating_url`과 일치하지 않으면 승인을 인정하지 않는다.
+- 취소·폐기 원문도 사용자 메시지 전체를 그대로 저장한다. 닫힌 실행(`CANCELLED`·`SUPERSEDED`)에서는 harness-runner·release-recorder의 스크립트가 `RUN_CLOSED`로 거부하고, gate-judge는 닫힌 상태를 그대로 보고한다.
 
 ## 4. 경계의 기계적 강제
 
@@ -115,6 +118,12 @@ R6에서는 규칙만 정의하고, hook과 판정 스크립트는 구현 라운
 - force push (`--force`, `-f`, `--force-with-lease`)
 - 강제 브랜치 변경 (`git checkout -f`, `git switch --discard-changes`, `git reset --hard`, `git branch -D` 등)
 - 심볼릭 링크나 junction을 통한 경계 우회
+- 모든 역할의 `config/*.local.json` 직접 접근
+  - Read·Grep·Write·Edit·MultiEdit·NotebookEdit 도구로 지정하는 것 (Windows 대소문자, `/`·`\`, 절대·상대경로, 말미 점, `::$DATA`를 정규화해 비교)
+  - 셸 명령줄에서 해당 파일을 지정하거나, config 폴더를 glob으로 펼치거나, config를 포함하는 폴더를 재귀 검색하는 것
+  - Git 상태 확인 결과를 `xargs` 등으로 다른 명령에 넘기는 것
+  - 허용: 내용을 읽지 않는 `git status`·`git check-ignore`·`git ls-files`, 그리고 명령줄에 경로 없이 스크립트 내부 로더로 읽는 하네스 스크립트 실행
+  - 셸 해석은 완전한 보안 경계가 아니다. local 값 변경은 사용자가 Claude 밖에서 직접 한다
 
 ### 판정할 수 없을 때
 

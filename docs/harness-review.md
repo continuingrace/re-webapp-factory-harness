@@ -25,7 +25,7 @@
 
 - **리뷰어:** Explore agent (읽기 전용). Read·Grep·Glob만 사용했고, Bash 시도는 project hook이 `알 수 없는 subagent (agent_type: Explore)`로 차단했다.
 - **대상:** 추적 파일 전체와 커밋 예정 파일 3개(`tests/mutations.json`, `tests/expected.json`, `tests/unit/failures.test.mjs`). 추적되지 않는 `node_modules`, `runs`, 임시 파일은 제외했다.
-- **리뷰 시점 커밋:** `0d29d23` + 커밋 전 테스트 파일 3개
+- **리뷰 시점 커밋:** R8-d 완료 커밋(`feat: enforce harness role boundaries`) + 커밋 전 테스트 파일 3개
 - **메인 세션이 제공한 실행 결과:** `npm test` 123개 통과·0개 실패·0개 건너뜀, F1~F10 기대 결과와 정확히 일치, 원본 sample-app fingerprint 전후 동일, 임시 폴더·실제 `runs/`·`releases/` 0건, 실제 subagent smoke test 3건 통과, project hook 실제 차단 확인
 
 ### 1-1. 총점: **80 / 100**
@@ -230,7 +230,7 @@ high 1건(R1)이 있으므로 `docs/harness-verification.md` 5-2에 따라 R8을
 
 ## 1차 보완 (2026-09-30)
 
-- 커밋: `f730319 fix: address approved harness review findings`
+- 커밋: `fix: address approved harness review findings`
 - 보완 항목: R1~R3, R5~R13, R4(결정적 테스트만. 실제 운영 URL·실제 기기 검증은 `NOT_RUN` 유지)
 - 보완 후 실행 결과: `npm test` 140개 통과·0개 실패·0개 건너뜀, F1~F10 기대 결과와 정확히 일치, 원본 sample-app fingerprint 전후 동일, 임시 폴더·실제 `runs/`·`releases/`·Chrome 프로필 변경 0건, checks.json `standards_version` 1.3.0·check 32개·정규화 해시 7/7
 
@@ -239,7 +239,7 @@ high 1건(R1)이 있으므로 `docs/harness-verification.md` 5-2에 따라 R8을
 ## 2차 독립 리뷰 (2026-09-30)
 
 - **리뷰어:** 새 Explore agent (읽기 전용). 1차 점수·발견 사항을 전달하지 않았고, 이 문서와 `docs/harness-verification.md` 6-4절은 읽지 않도록 지시했다. 리뷰어는 두 파일을 열지 않았다고 보고했다.
-- **리뷰 시점 커밋:** `f730319`
+- **리뷰 시점 커밋:** 1차 보완 커밋(`fix: address approved harness review findings`)
 - **기준:** 1차와 같은 100점 배점과 감점 규칙
 
 ### 2-1. 총점: **85 / 100** (blocker 0, high 0, medium 4, low 7, informational 2)

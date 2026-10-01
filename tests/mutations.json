@@ -6,7 +6,7 @@
       "target": "app_copy",
       "verification_type": "pipeline",
       "stages": [2],
-      "mutations": [{ "op": "append", "path": "README.md", "text": "\nIHIRI 참고 자료\n" }]
+      "mutations": [{ "op": "append", "path": "README.md", "text": "\nFixture-Foreign-Brand 참고 자료\n" }]
     },
     {
       "id": "F2",
@@ -20,7 +20,7 @@
       "target": "app_copy",
       "verification_type": "pipeline",
       "stages": [2],
-      "mutations": [{ "op": "replace", "path": "README.md", "from": "1.0.0", "to": "1.0.1" }]
+      "mutations": [{ "op": "replace", "path": "README.md", "from": "1.0.1", "to": "1.0.2" }]
     },
     {
       "id": "F4",

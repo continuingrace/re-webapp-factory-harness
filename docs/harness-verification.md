@@ -75,7 +75,7 @@ R8-a에서 `docs/harness-artifacts.md`에 `tests/`를 추가할 때, 같은 커�
 
 | # | 대상 | 검증 유형 | mutation | 기대 `check_id / failure_code` |
 |---|---|---|---|---|
-| F1 | 앱 복사본 | pipeline | 파일 1개에 `ihiri` 문자열 추가 | ★ `ST-04 / FOREIGN_PROJECT_MIXED` (불변 원칙 2) |
+| F1 | 앱 복사본 | pipeline | 파일 1개에 fixture 식별자 문자열 추가 (`tests/fixtures/identifiers.fixture.json`) | ★ `ST-04 / FOREIGN_PROJECT_MIXED` (불변 원칙 2) |
 | F2 | 합성 실행 폴더 | `judge_unit` | `evidence`가 빈 `PASS` 항목 삽입 | ★ `JG-01 / UNVERIFIED_PASS` (불변 원칙 1) |
 | F3 | 앱 복사본 | pipeline | README의 버전만 변경 | `ST-05 / VERSION_MISMATCH` |
 | F4 | 앱 복사본 | pipeline | `letter-spacing: -0.02em` 추가 | `DS-01 / DESIGN_LETTER_SPACING` |
@@ -153,11 +153,11 @@ R8-a에서 `docs/harness-artifacts.md`에 `tests/`를 추가할 때, 같은 커�
 
 | 라운드 | 상태 | 커밋 |
 |---|---|---|
-| R8-a | 완료 | `f4ff9d7` |
-| R8-b | 완료 | `d54b0ac` |
-| R8-c | 완료 | `a9fe3fc` |
-| R8-d | 완료 (실제 subagent smoke test 3건 통과) | `0d29d23` |
-| R8-e | 완료 후보 — 1차 리뷰 80/100(high 1) → 보완 `f730319` → 2차 독립 리뷰 **85/100**(공식 점수, blocker·high 0) → 표적 보완(S1·S2·S3·S5·S6·S7·S10 + 추가 보안 2건, 독립 재채점 없음) (`docs/harness-review.md`) | `6d5fce0`, `f730319`, `5563517`, 이번 커밋 |
+| R8-a | 완료 | `feat: implement harness core judgment engine` |
+| R8-b | 완료 | `feat: add browser QA and sample app` |
+| R8-c | 완료 | `feat: implement production and release flow` |
+| R8-d | 완료 (실제 subagent smoke test 3건 통과) | `feat: enforce harness role boundaries` |
+| R8-e | 완료 후보 — 1차 리뷰 80/100(high 1) → 1차 보완 커밋 → 2차 독립 리뷰 **85/100**(공식 점수, blocker·high 0) → 표적 보완(S1·S2·S3·S5·S6·S7·S10 + 추가 보안 2건, 독립 재채점 없음) (`docs/harness-review.md`) | `test: verify harness failure cases and initial review`, `fix: address approved harness review findings`, `docs: record second harness review`, 이번 커밋 |
 
 ### 6-2. 실패 사례
 
@@ -232,12 +232,50 @@ R8-a에서 `docs/harness-artifacts.md`에 `tests/`를 추가할 때, 같은 커�
 - 실제 HTTPS 운영 URL과 실제 모바일 기기 end-to-end는 `NOT_RUN`이다.
 - 테스트 재현성: 브라우저 테스트 파일 간 임시 프로필 경쟁을 없애기 위해 `npm test`는 테스트 파일을 순서대로 실행한다(`--test-concurrency=1`).
 
+v1.1 (standards 1.6.0) 비공개 식별자 local 설정의 알려진 한계:
+
+- 자동 테스트는 fixture 식별자만 쓴다. 실제 식별자가 추적 파일에 없는지는 `node scripts/tools/scan-tracked-identifiers.mjs`로 따로 확인한다.
+- 로더의 길이 0 regex 검사(빈 문자열과 몇 개의 probe 문자열)는 보조 방어이며 완전한 증명이 아니다. 조건부 길이 0 regex는 스캔 중 발견 즉시 ST-04 `NEEDS_ATTENTION / CHECK_INCONCLUSIVE`로 멈춘다.
+- regex 성능(과도한 백트래킹)은 사용자가 설정한 local 값의 책임이며 시간 제한을 두지 않는다.
+- ST-04 evidence의 경로는 식별자 부분을 가리지만, 다른 check의 evidence 경로는 가리지 않는다.
+- 설정 해시를 기록하지 않는다. 설정이 바뀌면 gate-judge·record-judgement·write-release의 재계산 결과가 runner 결과와 달라져 `BLOCKED`가 되며, 판정 결과가 같게 나오는 변경은 감지하지 않는다.
+- hook의 셸 명령 해석은 완전한 보안 경계가 아니다. `config/*.local.json` 직접 지정·glob·brace 확장·재귀 검색·상태 확인 결과 전달을 막지만, 모든 간접 접근을 막는다고 보장하지 않는다.
+
+v1.1 hook glob·brace 판정 보강 (`fix: harden hook glob matching`):
+
+- 해결: 짝이 맞지 않는 `[`가 든 정상 명령에서 glob 정규식 생성이 예외를 내 "판정 중 오류"로 차단되던 오탐. glob은 `*`·`**`·`?`·닫힌 `[...]`만 해석하고(닫힌 괄호식은 내용과 무관하게 한 글자로 넓게 판정) 나머지 문자는 리터럴로 처리한다. `[!x]`를 정규식 문자 집합으로 잘못 해석해 통과하던 경우도 막는다.
+- 해결: brace 확장(`{a,b}`, `{x..y}`, 중첩)으로 local 설정을 가리키던 우회. 전개하지 않고 가장 바깥 확장 가능 그룹을 와일드카드로 넓혀 판정한다(선형, 중첩 깊이 32 초과는 차단). 이 때문에 `ls {config,docs}/*`처럼 config 폴더를 포함할 수 있는 확장도 차단된다.
+- 판정 불가·내부 오류는 `HOOK_GLOB_INVALID`·`HOOK_BRACE_UNDECIDABLE`·`HOOK_BRACE_INVALID`·`HOOK_INTERNAL_ERROR` 코드로 차단하며, 명령 원문과 패턴 내용은 출력하지 않는다.
+
+v1.1 보호 경로 glob·brace 우회 차단 (`fix: block protected path glob and brace bypass`):
+
+- 해결: 알려진 쓰기 동사(`rm`·`cp`·`mv`·`tee`·`del`·`Remove-Item`·`Set-Content`·`sed -i` 등)의 인자와 redirect 대상이 glob(`*`·`**`·`?`·`[...]`), brace, Windows 말미 점·공백, 8.3 짧은 이름(`RELEAS~1`), Git Bash·Cygwin 드라이브 표기(`/c/…`, `/cygdrive/c/…`), 서브셸 괄호로 `runs/`·`releases/`·`.git`을 가리키던 우회. 셸 확장·파일 열거 없이 구성요소가 보호 폴더 이름과 일치할 수 있으면 막는다. 상대경로는 깊이와 관계없이 보고, 절대경로는 glob 앞 리터럴 부분이 저장소 안이거나 저장소의 상위일 때만 본다.
+- 해결: `cd`·`pushd`·`Set-Location` 등으로 보호 경로(일 수 있는 곳)로 이동한 뒤의 쓰기 동사나 상대경로 redirect.
+- 쓰기 대상에 실행 시 값이 정해지는 구성요소(`$X`·`${X}`·`$(…)`·백틱·`%X%`·`$env:X`, 다른 사용자의 `~name`)가 있으면 `HOOK_WRITE_TARGET_UNDECIDABLE`로 막는다. 맨 앞 `~`는 hook 프로세스의 홈 폴더로 풀어 같은 기준으로 판정한다. 판정 중 오류는 `HOOK_PROTECTED_INVALID`로 막는다. 메시지에는 변수명·경로·명령 원문을 넣지 않는다.
+- 새로 차단되는 정상 명령(승인된 보수적 판정): `rm -rf node_modules/*`·`rm -rf dist/*`처럼 보호 폴더 이름과 일치할 수 있는 glob 구성요소가 든 삭제(리터럴 경로 `node_modules/.cache`는 허용), 쓰기 동사 인자에 `$`가 든 명령(`sed -i 's/a$/b/' …`, `cp a "$X"`), `echo x > "$TMPDIR/x.txt"`처럼 변수로 시작하는 redirect.
+
+hook의 범위 (명시적 한계):
+
+- hook은 완전한 OS sandbox가 아니다. 알려진 쓰기 동사·redirect·Git 파괴 명령·local 설정 경로를 문자열로 판정하는 방어선이며, 실행 프로그램의 의미를 분석하지 않는다.
+- 쓰기 동사 목록 밖의 명령은 판정하지 않는다. 예: `find runs -delete`, `node -e`로 파일 조작, `tar -C runs -x`, `rsync`, `robocopy`, 스크립트 파일 내부의 쓰기. 이 경우의 주 방어선은 subagent의 제한된 도구, 역할별 정확한 명령 allowlist, 판정 스크립트의 fingerprint·경로 검증이다.
+- 따옴표 안의 `$`·glob도 셸과 달리 확장될 수 있다고 보고 막는다(셸보다 넓게 판정).
+
+v1.1 보호 경로 상위 삭제·이동 차단 (`fix: block protected path ancestor deletion`):
+
+- 해결: 삭제 동사(`rm`·`rmdir`·`del`·`erase`·`rd`·`Remove-Item`·`ri`)와 이동 동사(`mv`·`move`·`Move-Item`·`mi`·`Rename-Item`·`ren`·`rni`)의 source가 저장소 루트, 저장소의 상위(드라이브 루트·홈 포함), 또는 `runs/`·`releases/`·`.git`과 같거나 그 상위이던 우회(`rm -rf .`, `rm -rf ..`, 저장소 절대경로, `mv . ../backup`, `Remove-Item . -Recurse` 등). 이동 목적지(`-Destination`·`-NewName`·`-t`·마지막 인자)는 source로 보지 않는다.
+- 작업 위치는 hook 입력의 `cwd`와 명령 안의 `cd`·`pushd`·`chdir`·`Set-Location`·`sl`·`Push-Location`으로 도달할 수 있는 위치를 모두 모은 집합으로 판정한다. 서브셸·파이프로 위치가 되돌아가는 경우를 놓치지 않기 위해 순서 추적 대신 집합을 쓴다(집합 크기 64 초과는 알 수 없는 위치로 본다).
+- `/`·`\`, `.`·`..`(`...` 이상은 `..`로 봄), 말미 점·공백, 대체 데이터 스트림, 대소문자, `~`, Git Bash·Cygwin 드라이브 표기를 정규화한다. glob은 전개하지 않고 리터럴 prefix 이후 구성요소를 저장소까지 남은 경로 구성요소와 순서대로 비교해 일치할 수 있을 때만 막는다(`../*`·`../claude*` 차단, `../*.bak`·`/tmp/*` 허용). `**`, glob 뒤의 `..`, 변수, 다른 사용자의 `~name`, 드라이브 상대경로(`C:foo`)는 판정 불가로 막는다.
+- 판정 불가는 `HOOK_WRITE_TARGET_UNDECIDABLE`, 판정 중 오류는 `HOOK_PROTECTED_INVALID`, 차단 사유는 `보호 경로의 상위 경로 삭제·이동`이며 경로·명령 원문을 출력하지 않는다.
+- 전제: hook 입력의 `cwd`가 셸의 실제 작업 위치와 같다고 본다. `cwd`가 없으면 알 수 없는 위치로 보고 상대경로 삭제·이동을 막는다.
+- 승인된 오탐: 가능한 작업 위치 집합에 시작 위치가 남으므로 `cd docs/sub && rm -rf ..`도 막는다. `cd node_mod* && rm -f a`처럼 glob·변수로 이동하거나 `cd -`·`popd` 뒤의 상대경로 삭제·이동, `cwd`가 없는 입력의 상대경로 삭제·이동도 막는다.
+- 이 커밋으로 hook 보완을 마친다. 쓰기 동사 목록 밖의 임의 프로그램 의미 분석은 blocker급 직접 우회가 아닌 한 위 "hook의 범위" 한계로 문서화만 한다.
+
 ## 7. 패키지와 브라우저
 
 ### 7-1. 패키지
 
 - 저장소 루트의 `package.json`·`package-lock.json`에 devDependencies를 정확한 버전으로 고정한다: `playwright@1.63.0`, `@axe-core/playwright@4.13.0`.
-- `node_modules/`는 `.gitignore`에 추가한다. Git에는 올라가지 않지만 OneDrive 동기화 대상이 될 수 있다.
+- `node_modules/`는 `.gitignore`에 추가한다. Git에는 올라가지 않지만 클라우드 동기화 폴더에 있으면 동기화 대상이 될 수 있다.
 
 ### 7-2. 브라우저 — 설치된 Chrome 채널 사용
 

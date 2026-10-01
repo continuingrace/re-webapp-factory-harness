@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "description": "자동 테스트 전용 공개 이력 대응표 (가짜 SHA·버전·날짜, 실제 기록 아님)",
+  "exports": [
+    {
+      "export_id": "pub-20260101-01",
+      "kind": "submission",
+      "standards_version": "1.0.0",
+      "private_standards_version": "0.9.0",
+      "date": "2026-01-01T09:00:00+09:00",
+      "private_commit": "1111111111111111111111111111111111111111",
+      "public_commit": "2222222222222222222222222222222222222222"
+    }
+  ]
+}

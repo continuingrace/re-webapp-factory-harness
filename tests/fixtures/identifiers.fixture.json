@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "identifiers": [
+    { "id": "ID-FIXTURE-1", "match": "literal", "value": "fixture-foreign-brand", "note": "테스트 전용 식별자. 실제 비공개 식별자가 아니다." },
+    { "id": "ID-FIXTURE-2", "match": "regex", "value": "\\bfxword\\b", "note": "단어 경계가 필요한 테스트 전용 식별자." }
+  ]
+}
